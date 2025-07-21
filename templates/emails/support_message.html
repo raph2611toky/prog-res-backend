@@ -1,0 +1,358 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nouveau message de contact - Sexual AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 1rem;
+            line-height: 1.6;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border: 1px solid #e2e8f0;
+        }
+
+        .header {
+            padding: 2rem 2rem 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .logo {
+            margin-bottom: 1.5rem;
+        }
+
+        .logo img {
+            max-width: 140px;
+            height: auto;
+        }
+
+        .brand-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: #dc2626;
+            margin: 0;
+            letter-spacing: -0.025em;
+        }
+
+        .content {
+            padding: 2rem;
+        }
+
+        .greeting {
+            font-size: 16px;
+            font-weight: 500;
+            color: #64748b;
+            margin-bottom: 1.5rem;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+        }
+
+        .description {
+            font-size: 16px;
+            color: #64748b;
+            margin-bottom: 2rem;
+            line-height: 1.7;
+            text-align: center;
+        }
+
+        .contact-info {
+            background: linear-gradient(135deg, #fef2f2, #fdf4ff);
+            border: 1px solid #fecaca;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .contact-info h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1e293b;
+            margin: 0 0 1rem 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .contact-info-icon {
+            font-size: 20px;
+            margin-right: 0.5rem;
+        }
+
+        .info-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            background: #ffffff;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #1e293b;
+            min-width: 80px;
+            margin-right: 1rem;
+        }
+
+        .info-value {
+            color: #64748b;
+            flex: 1;
+        }
+
+        .info-value a {
+            color: #dc2626;
+            text-decoration: none;
+        }
+
+        .info-value a:hover {
+            text-decoration: underline;
+            color: #c026d3;
+        }
+
+        .message-container {
+            background: #f8fafc;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border: 1px solid #e2e8f0;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .message-icon {
+            font-size: 20px;
+            margin-right: 0.5rem;
+        }
+
+        .message-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1e293b;
+            margin: 0;
+        }
+
+        .message-content {
+            background: #ffffff;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+            font-size: 15px;
+            color: #1e293b;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .action-section {
+            background: linear-gradient(135deg, #fef2f2, #fdf4ff);
+            border: 1px solid #fecaca;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+
+        .action-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 1rem;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #ef4444, #d946ef);
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 600;
+            border-radius: 9999px;
+            transition: 0.3s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            font-size: 14px;
+        }
+
+        .cta-button:hover {
+            background: linear-gradient(135deg, #dc2626, #c026d3);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .priority-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 9999px;
+            margin-left: 0.5rem;
+        }
+
+        .timestamp {
+            font-size: 14px;
+            color: #94a3b8;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .footer {
+            background: #f1f5f9;
+            padding: 1.5rem;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .footer-links {
+            margin-bottom: 1rem;
+        }
+
+        .footer-links a {
+            color: #dc2626;
+            text-decoration: none;
+            font-size: 14px;
+            margin: 0 0.75rem;
+            font-weight: 500;
+        }
+
+        .footer-links a:hover {
+            text-decoration: underline;
+            color: #c026d3;
+        }
+
+        .copyright {
+            font-size: 12px;
+            color: #94a3b8;
+            margin: 0;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 0.5rem;
+            }
+            
+            .content {
+                padding: 1.5rem;
+            }
+            
+            .title {
+                font-size: 24px;
+            }
+
+            .info-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .info-label {
+                margin-bottom: 0.25rem;
+                margin-right: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">
+                <img src="{{ logo_url }}" alt="Sexual AI Logo">
+            </div>
+            <h1 class="brand-name">Sexual AI</h1>
+        </div>
+        
+        <div class="content">
+            <p class="greeting">Équipe de support,</p>
+            
+            <h2 class="title">Nouveau message de contact</h2>
+            
+            <p class="description">
+                Un nouveau message a été reçu via le formulaire de contact de Sexual AI. Veuillez traiter cette demande dans les plus brefs délais.
+            </p>
+
+            <div class="timestamp">
+                Reçu le {{ current_date }} à {{ current_time }}
+            </div>
+            
+            <div class="contact-info">
+                <h3>
+                    <span class="contact-info-icon">👤</span>
+                    Informations du contact
+                </h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Nom :</span>
+                        <span class="info-value">{{ nom_complet }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Email :</span>
+                        <span class="info-value">
+                            <a href="mailto:{{ addresse_email }}">{{ addresse_email }}</a>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="message-container">
+                <div class="message-header">
+                    <span class="message-icon">💬</span>
+                    <h3 class="message-title">Message reçu</h3>
+                    <span class="priority-badge">Nouveau</span>
+                </div>
+                <div class="message-content">{{ message }}</div>
+            </div>
+            
+            <div class="action-section">
+                <p class="action-title">Action recommandée</p>
+                <a href="mailto:{{ addresse_email }}?subject=Re: Votre message sur Sexual AI" class="cta-button">
+                    Répondre par email
+                </a>
+            </div>
+            
+            <p class="description">
+                Ce message nécessite une réponse de votre part. Vous pouvez répondre directement en cliquant sur le bouton ci-dessus ou en contactant 
+                <a href="mailto:{{ addresse_email }}" style="color: #dc2626; text-decoration: none;">{{ addresse_email }}</a>
+            </p>
+        </div>
+        
+        <div class="footer">
+            <div class="footer-links">
+                <a href="{{ site_url }}">Site web</a>
+                <a href="#">Panneau admin</a>
+                <a href="#">Support</a>
+            </div>
+            <p class="copyright">&copy; {{ current_year }} Sexual AI. Tous droits réservés.</p>
+        </div>
+    </div>
+</body>
+</html>

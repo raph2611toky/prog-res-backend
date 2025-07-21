@@ -1,0 +1,375 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vérification de votre compte - Sexual AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+            margin: 0;
+            padding: 1rem;
+            line-height: 1.6;
+        }
+
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border: 1px solid #e2e8f0;
+        }
+
+        .header {
+            padding: 2rem 2rem 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .logo {
+            margin-bottom: 1.5rem;
+        }
+
+        .logo img {
+            max-width: 140px;
+            height: auto;
+        }
+
+        .brand-name {
+            font-size: 24px;
+            font-weight: 700;
+            color: #dc2626;
+            margin: 0;
+            letter-spacing: -0.025em;
+        }
+
+        .content {
+            padding: 2rem;
+        }
+
+        .greeting {
+            font-size: 16px;
+            font-weight: 500;
+            color: #64748b;
+            margin-bottom: 1.5rem;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+        }
+
+        .description {
+            font-size: 16px;
+            color: #64748b;
+            margin-bottom: 2rem;
+            line-height: 1.7;
+            text-align: center;
+        }
+
+        .otp-container {
+            text-align: center;
+            margin: 2rem 0;
+            padding: 2rem;
+            background: linear-gradient(135deg, #fef2f2, #fdf4ff);
+            border-radius: 0.75rem;
+            border: 1px solid #fecaca;
+        }
+
+        .otp-label {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .otp-code {
+            display: inline-block;
+            font-size: 36px;
+            font-weight: 700;
+            color: #dc2626;
+            background: #ffffff;
+            padding: 1rem 2rem;
+            border-radius: 0.5rem;
+            border: 2px solid #fca5a5;
+            letter-spacing: 0.2em;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .steps-container {
+            margin: 2rem 0;
+            background: #f8fafc;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+        }
+
+        .steps-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1e293b;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .steps {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: #ffffff;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+            transition: 0.3s ease-in-out;
+        }
+
+        .step:hover {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-color: #fecaca;
+        }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #ef4444, #d946ef);
+            color: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            margin-right: 1rem;
+        }
+
+        .step-content h3 {
+            margin: 0 0 0.5rem 0;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .step-content p {
+            margin: 0;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .cta-button {
+            display: block;
+            width: fit-content;
+            margin: 2rem auto;
+            padding: 1rem 2rem;
+            background: linear-gradient(135deg, #ef4444, #d946ef);
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 600;
+            border-radius: 9999px;
+            transition: 0.3s ease-in-out;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            font-size: 16px;
+        }
+
+        .cta-button:hover {
+            background: linear-gradient(135deg, #dc2626, #c026d3);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, #fef2f2, #fdf4ff);
+            border: 1px solid #fecaca;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .info-box p {
+            margin: 0;
+            font-size: 15px;
+            color: #b91c1c;
+            text-align: center;
+        }
+
+        .security-note {
+            background: #fefce8;
+            border: 1px solid #facc15;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin: 2rem 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .security-icon {
+            font-size: 20px;
+            margin-right: 0.75rem;
+        }
+
+        .security-text {
+            font-size: 14px;
+            color: #a16207;
+            margin: 0;
+        }
+
+        .highlight {
+            font-weight: 600;
+            color: #dc2626;
+        }
+
+        .footer {
+            background: #f1f5f9;
+            padding: 1.5rem;
+            text-align: center;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .footer-links {
+            margin-bottom: 1rem;
+        }
+
+        .footer-links a {
+            color: #dc2626;
+            text-decoration: none;
+            font-size: 14px;
+            margin: 0 0.75rem;
+            font-weight: 500;
+        }
+
+        .footer-links a:hover {
+            text-decoration: underline;
+            color: #c026d3;
+        }
+
+        .copyright {
+            font-size: 12px;
+            color: #94a3b8;
+            margin: 0;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 0.5rem;
+            }
+            
+            .content {
+                padding: 1.5rem;
+            }
+            
+            .otp-code {
+                font-size: 28px;
+                padding: 0.75rem 1.5rem;
+            }
+            
+            .title {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="logo">
+                <img src="{{ logo_url }}" alt="Sexual AI Logo">
+            </div>
+            <h1 class="brand-name">Sexual AI</h1>
+        </div>
+        
+        <div class="content">
+            <p class="greeting">Bonjour {{ prenom }} {{ nom }},</p>
+            
+            <h2 class="title">Vérification de votre compte</h2>
+            
+            <p class="description">
+                {% if type_utilisateur == 'support' %}
+                Bienvenue dans notre équipe de support ! Pour garantir la sécurité de notre plateforme, nous devons vérifier votre adresse email avant que vous puissiez accéder à votre compte administrateur.
+                {% else %}
+                Bienvenue sur Sexual AI ! Pour garantir la sécurité de votre compte et commencer votre expérience, nous devons vérifier votre adresse email.
+                {% endif %}
+            </p>
+            
+            <div class="otp-container">
+                <p class="otp-label">Votre code de vérification</p>
+                <div class="otp-code">{{ code_otp }}</div>
+            </div>
+            
+            <div class="steps-container">
+                <h3 class="steps-title">Comment procéder</h3>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Copiez le code</h3>
+                            <p>Copiez le code à 6 chiffres affiché ci-dessus</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Retournez à la plateforme</h3>
+                            <p>Revenez à la page de vérification sur notre site</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Entrez le code</h3>
+                            <p>Saisissez le code pour activer votre compte</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <a href="{{ verification_url }}" class="cta-button">Vérifier mon compte</a>
+            
+            <div class="info-box">
+                <p>
+                    {% if type_utilisateur == 'support' %}
+                    Une fois vérifié, vous aurez accès à tous les outils d'administration et de support de notre plateforme.
+                    {% else %}
+                    Une fois vérifié, vous aurez accès à toutes les fonctionnalités de Sexual AI pour une expérience personnalisée et sécurisée.
+                    {% endif %}
+                </p>
+            </div>
+            
+            <div class="security-note">
+                <div class="security-icon">⏱️</div>
+                <p class="security-text">
+                    Ce code expire dans <span class="highlight">30 minutes</span>. Si vous n'avez pas demandé cette vérification, ignorez cet email.
+                </p>
+            </div>
+            
+            <p class="description">
+                Besoin d'aide ? Contactez notre équipe à 
+                <a href="mailto:{{ support_email }}" style="color: #dc2626; text-decoration: none;">{{ support_email }}</a>
+            </p>
+        </div>
+        
+        <div class="footer">
+            <div class="footer-links">
+                <a href="{{ site_url }}">Site web</a>
+                <a href="{{ aide_url }}">Aide</a>
+                <a href="#">Confidentialité</a>
+            </div>
+            <p class="copyright">&copy; {{ current_year }} Sexual AI. Tous droits réservés.</p>
+        </div>
+    </div>
+</body>
+</html>

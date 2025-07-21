@@ -1,0 +1,20 @@
+
+
+**/migrations/0*
+apps/*/migrations/0*
+
+__pycache__
+*/__pycache__
+*/*/__pycache__
+*/*/*/__pycache__
+*/*/*/*/__pycache__
+*/*/*/*/*/__pycache__
+
+*.pyc
+
+__pycache__/
+*.py[cod]
+
+# Django / Python specifics
+*.sqlite3
+*.log
