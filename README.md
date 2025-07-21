@@ -84,16 +84,6 @@ Tu es chargé de la **conception, de la structure et du développement des parti
 
 ---
 
-### 7. **Segmentation des vidéos**
-
-* Découpage des vidéos en chapitres/segments :
-
-  * Stockage des segments HLS `.m3u8` / `.ts`
-  * Ajout de métadonnées (timestamps, nom de chapitre)
-* API pour récupérer la structure segmentée.
-
----
-
 ## 👥 Développeur 2 (Collaborateur – microservices)
 
 ### 🎯 Rôle :
@@ -111,6 +101,16 @@ Tu es responsable du développement **de microservices et tâches spécifiques**
 * Générer les miniatures automatiquement.
 
 > 📦 Stack : Python + `ffmpeg` + Celery pour traitement en tâche de fond.
+
+---
+
+### 2. **Segmentation des vidéos**
+
+* Découpage des vidéos en chapitres/segments :
+
+  * Stockage des segments HLS `.m3u8` / `.ts`
+  * Ajout de métadonnées (timestamps, nom de chapitre)
+* API pour récupérer la structure segmentée.
 
 ---
 
