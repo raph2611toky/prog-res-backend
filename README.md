@@ -7,7 +7,7 @@ Ce backend, développé en **Django**, est conçu pour gérer une plateforme de 
 
 ---
 
-## 👤 Développeur 1 (Toi - Responsable principal)
+## 👤 Développeur 1 (Responsable principal)
 
 ### 🎯 Rôle :
 
