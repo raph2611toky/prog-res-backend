@@ -83,6 +83,13 @@ Tu es chargé de la **conception, de la structure et du développement des parti
   * GET `/api/videos/{id}/comments/`
 
 ---
+### 7. **Segmentation des vidéos**
+
+* Découpage des vidéos en chapitres/segments :
+
+  * Stockage des segments HLS `.m3u8` / `.ts`
+  * Ajout de métadonnées (timestamps, nom de chapitre)
+* API pour récupérer la structure segmentée.
 
 ## 👥 Développeur 2 (Collaborateur – microservices)
 
@@ -104,20 +111,15 @@ Tu es responsable du développement **de microservices et tâches spécifiques**
 
 ---
 
-### 2. **Segmentation des vidéos**
+### 2. **Information sur les vidéos**
 
-* Découpage des vidéos en chapitres/segments :
+* Informations utiles sur les videos :
 
-  * Stockage des segments HLS `.m3u8` / `.ts`
-  * Ajout de métadonnées (timestamps, nom de chapitre)
-* API pour récupérer la structure segmentée.
-
----
-
-### 3. **Microservice de notification**
-
-* Envoi de notifications par mail (ex: nouvelle vidéo ajoutée, commentaire reçu).
-* Optionnel : push notification vers le frontend (via WebSocket).
+  * taille d'un video en `octets` (K, M, G, T)
+  * durré de la video en format `%H:%M:%S`
+  * langue disponible dans la video
+  * contient de sous titre ou pas ?
+* 
 
 ---
 

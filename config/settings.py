@@ -13,7 +13,7 @@ IP_ADDR, PORT = get_server_settings()
 
 SECRET_KEY = 'r4ph43l!s3cr3t_.sp(v70*_=3r58j^bpe7gitr7j((!hev&b17h=8ssdm8#$^cv6d'
 
-DEBUG = False
+DEBUG = True
 
 handler404 = 'config.views.custom_404'
 
@@ -21,13 +21,16 @@ ALLOWED_HOSTS = [IP_ADDR, '127.0.0.1', 'localhost']
 
 LOCAL_APPS = [
     'apps.users.apps.UsersConfig',
+    'apps.videos.apps.VideosConfig'
 ]
 
 THIRD_APPS = [
-    'rest_framework',
     'corsheaders',
+    'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
+    'drf_yasg',
+    'django_extensions',
 ]
 
 INSTALLED_APPS = [
@@ -39,8 +42,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'drf_yasg',
-    'django_extensions',
 ]
 
 MIDDLEWARE = [
@@ -219,3 +220,26 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'file': {
+            'level': 'ERROR',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'debug.log'),
+        },
+        'console': {
+            'level': 'ERROR',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+    },
+}

@@ -1,70 +1,105 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vérification de votre compte - Sexual AI</title>
+    <title>Vérification de votre compte - StreamingPlayer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background-color: #f8fafc;
-            color: #1e293b;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            color: #e2e8f0;
             margin: 0;
             padding: 1rem;
             line-height: 1.6;
+            min-height: 100vh;
         }
 
         .email-container {
             max-width: 600px;
             margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 1rem;
+            background: linear-gradient(145deg, #1e293b 0%, #334155 100%);
+            border-radius: 1.5rem;
             overflow: hidden;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.1);
+            border: 1px solid rgba(148, 163, 184, 0.2);
         }
 
         .header {
-            padding: 2rem 2rem 1.5rem;
+            padding: 2.5rem 2rem 2rem;
             text-align: center;
-            border-bottom: 1px solid #e2e8f0;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
         }
 
         .logo {
             margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 1;
         }
 
-        .logo img {
-            max-width: 140px;
-            height: auto;
+        .logo-icon {
+            width: auto;
+            height: 60px;
+            max-width: 200px;
+            object-fit: contain;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
         }
 
         .brand-name {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: 700;
-            color: #dc2626;
+            color: #ffffff;
             margin: 0;
             letter-spacing: -0.025em;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .brand-tagline {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            margin: 0.5rem 0 0 0;
+            position: relative;
+            z-index: 1;
         }
 
         .content {
-            padding: 2rem;
+            padding: 2.5rem 2rem;
+            background: #1e293b;
         }
 
         .greeting {
             font-size: 16px;
             font-weight: 500;
-            color: #64748b;
+            color: #94a3b8;
             margin-bottom: 1.5rem;
         }
 
         .title {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: 700;
-            color: #1e293b;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
             text-align: center;
             margin-bottom: 1.5rem;
             line-height: 1.2;
@@ -72,7 +107,7 @@
 
         .description {
             font-size: 16px;
-            color: #64748b;
+            color: #cbd5e1;
             margin-bottom: 2rem;
             line-height: 1.7;
             text-align: center;
@@ -80,186 +115,248 @@
 
         .otp-container {
             text-align: center;
-            margin: 2rem 0;
-            padding: 2rem;
-            background: linear-gradient(135deg, #fef2f2, #fdf4ff);
-            border-radius: 0.75rem;
-            border: 1px solid #fecaca;
+            margin: 2.5rem 0;
+            padding: 2.5rem;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 50%, rgba(217, 70, 239, 0.1) 100%);
+            border-radius: 1rem;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .otp-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
         }
 
         .otp-label {
             font-size: 14px;
-            color: #64748b;
-            margin-bottom: 1rem;
+            color: #94a3b8;
+            margin-bottom: 1.5rem;
             font-weight: 500;
+            position: relative;
+            z-index: 1;
         }
 
         .otp-code {
             display: inline-block;
-            font-size: 36px;
+            font-size: 42px;
             font-weight: 700;
-            color: #dc2626;
-            background: #ffffff;
-            padding: 1rem 2rem;
-            border-radius: 0.5rem;
-            border: 2px solid #fca5a5;
-            letter-spacing: 0.2em;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            background-color: #334155;
+            padding: 1.5rem 2.5rem;
+            border-radius: 0.75rem;
+            border: 2px solid rgba(99, 102, 241, 0.4);
+            letter-spacing: 0.3em;
             font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            position: relative;
+            z-index: 1;
         }
 
         .steps-container {
-            margin: 2rem 0;
-            background: #f8fafc;
-            border-radius: 0.75rem;
-            padding: 1.5rem;
+            margin: 2.5rem 0;
+            background: #334155;
+            border-radius: 1rem;
+            padding: 2rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
         }
 
         .steps-title {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
-            color: #1e293b;
+            color: #f1f5f9;
             text-align: center;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .steps {
             display: grid;
-            gap: 1rem;
+            gap: 1.5rem;
         }
 
         .step {
             display: flex;
             align-items: center;
-            padding: 1rem;
-            background: #ffffff;
-            border-radius: 0.5rem;
-            border: 1px solid #e2e8f0;
-            transition: 0.3s ease-in-out;
+            padding: 1.5rem;
+            background: #475569;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            transition: all 0.3s ease-in-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .step:hover::before {
+            opacity: 1;
         }
 
         .step:hover {
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border-color: #fecaca;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            border-color: rgba(99, 102, 241, 0.4);
         }
 
         .step-number {
             flex-shrink: 0;
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, #ef4444, #d946ef);
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
             color: #ffffff;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 600;
-            font-size: 14px;
-            margin-right: 1rem;
+            font-size: 16px;
+            margin-right: 1.5rem;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+            position: relative;
+            z-index: 1;
         }
 
         .step-content h3 {
             margin: 0 0 0.5rem 0;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
-            color: #1e293b;
+            color: #f1f5f9;
+            position: relative;
+            z-index: 1;
         }
 
         .step-content p {
             margin: 0;
             font-size: 14px;
-            color: #64748b;
+            color: #cbd5e1;
+            position: relative;
+            z-index: 1;
         }
 
         .cta-button {
             display: block;
             width: fit-content;
-            margin: 2rem auto;
-            padding: 1rem 2rem;
-            background: linear-gradient(135deg, #ef4444, #d946ef);
+            margin: 2.5rem auto;
+            padding: 1.25rem 2.5rem;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #d946ef 100%);
             color: #ffffff;
             text-decoration: none;
             font-weight: 600;
             border-radius: 9999px;
-            transition: 0.3s ease-in-out;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: all 0.3s ease-in-out;
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
             font-size: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .cta-button:hover::before {
+            left: 100%;
         }
 
         .cta-button:hover {
-            background: linear-gradient(135deg, #dc2626, #c026d3);
-            transform: translateY(-1px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(99, 102, 241, 0.5);
         }
 
         .info-box {
-            background: linear-gradient(135deg, #fef2f2, #fdf4ff);
-            border: 1px solid #fecaca;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 0.75rem;
+            padding: 2rem;
             margin: 2rem 0;
         }
 
         .info-box p {
             margin: 0;
             font-size: 15px;
-            color: #b91c1c;
+            color: #86efac;
             text-align: center;
         }
 
         .security-note {
-            background: #fefce8;
-            border: 1px solid #facc15;
-            border-radius: 0.5rem;
-            padding: 1rem;
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
             margin: 2rem 0;
             display: flex;
             align-items: center;
         }
 
         .security-icon {
-            font-size: 20px;
-            margin-right: 0.75rem;
+            font-size: 24px;
+            margin-right: 1rem;
         }
 
         .security-text {
             font-size: 14px;
-            color: #a16207;
+            color: #fbbf24;
             margin: 0;
         }
 
         .highlight {
             font-weight: 600;
-            color: #dc2626;
+            color: #fbbf24;
         }
 
         .footer {
-            background: #f1f5f9;
-            padding: 1.5rem;
+            background: #0f172a;
+            padding: 2rem;
             text-align: center;
-            border-top: 1px solid #e2e8f0;
+            border-top: 1px solid rgba(148, 163, 184, 0.2);
         }
 
         .footer-links {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
 
         .footer-links a {
-            color: #dc2626;
+            color: #8b5cf6;
             text-decoration: none;
             font-size: 14px;
-            margin: 0 0.75rem;
+            margin: 0 1rem;
             font-weight: 500;
+            transition: color 0.3s ease;
         }
 
         .footer-links a:hover {
-            text-decoration: underline;
-            color: #c026d3;
+            color: #d946ef;
         }
 
         .copyright {
             font-size: 12px;
-            color: #94a3b8;
+            color: #64748b;
             margin: 0;
         }
 
@@ -269,17 +366,28 @@
             }
             
             .content {
-                padding: 1.5rem;
+                padding: 2rem 1.5rem;
             }
             
             .otp-code {
-                font-size: 28px;
-                padding: 0.75rem 1.5rem;
+                font-size: 32px;
+                padding: 1rem 2rem;
             }
             
             .title {
-                font-size: 24px;
+                font-size: 28px;
             }
+
+            .step {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .step-number {
+                margin-right: 0;
+                margin-bottom: 1rem;
+            }
+            
         }
     </style>
 </head>
@@ -287,9 +395,10 @@
     <div class="email-container">
         <div class="header">
             <div class="logo">
-                <img src="{{ logo_url }}" alt="Sexual AI Logo">
+                <img src="https://res.cloudinary.com/djzflrl1u/image/upload/v1753118405/logo_yizy6k.png" alt="StreamingPlayer Logo" class="logo-icon">
             </div>
-            <h1 class="brand-name">Sexual AI</h1>
+            <h1 class="brand-name">StreamingPlayer</h1>
+            <p class="brand-tagline">Votre plateforme de streaming premium</p>
         </div>
         
         <div class="content">
@@ -299,9 +408,9 @@
             
             <p class="description">
                 {% if type_utilisateur == 'support' %}
-                Bienvenue dans notre équipe de support ! Pour garantir la sécurité de notre plateforme, nous devons vérifier votre adresse email avant que vous puissiez accéder à votre compte administrateur.
+                Bienvenue dans notre équipe de support ! Pour garantir la sécurité de notre plateforme de streaming, nous devons vérifier votre adresse email avant que vous puissiez accéder à votre compte administrateur.
                 {% else %}
-                Bienvenue sur Sexual AI ! Pour garantir la sécurité de votre compte et commencer votre expérience, nous devons vérifier votre adresse email.
+                Bienvenue sur StreamingPlayer ! Pour garantir la sécurité de votre compte et commencer à profiter de nos contenus exclusifs, nous devons vérifier votre adresse email.
                 {% endif %}
             </p>
             
@@ -323,8 +432,8 @@
                     <div class="step">
                         <div class="step-number">2</div>
                         <div class="step-content">
-                            <h3>Retournez à la plateforme</h3>
-                            <p>Revenez à la page de vérification sur notre site</p>
+                            <h3>Retournez à StreamingPlayer</h3>
+                            <p>Revenez à la page de vérification sur notre plateforme</p>
                         </div>
                     </div>
                     <div class="step">
@@ -342,9 +451,9 @@
             <div class="info-box">
                 <p>
                     {% if type_utilisateur == 'support' %}
-                    Une fois vérifié, vous aurez accès à tous les outils d'administration et de support de notre plateforme.
+                    Une fois vérifié, vous aurez accès à tous les outils d'administration et de support de StreamingPlayer.
                     {% else %}
-                    Une fois vérifié, vous aurez accès à toutes les fonctionnalités de Sexual AI pour une expérience personnalisée et sécurisée.
+                    Une fois vérifié, vous aurez accès à notre catalogue complet de films, séries et contenus exclusifs en streaming haute qualité.
                     {% endif %}
                 </p>
             </div>
@@ -358,17 +467,18 @@
             
             <p class="description">
                 Besoin d'aide ? Contactez notre équipe à 
-                <a href="mailto:{{ support_email }}" style="color: #dc2626; text-decoration: none;">{{ support_email }}</a>
+                <a href="mailto:{{ support_email }}" style="color: #8b5cf6; text-decoration: none;">{{ support_email }}</a>
             </p>
         </div>
         
         <div class="footer">
             <div class="footer-links">
-                <a href="{{ site_url }}">Site web</a>
-                <a href="{{ aide_url }}">Aide</a>
+                <a href="{{ site_url }}">Accueil</a>
+                <a href="{{ aide_url }}">Support</a>
                 <a href="#">Confidentialité</a>
+                <a href="#">Conditions</a>
             </div>
-            <p class="copyright">&copy; {{ current_year }} Sexual AI. Tous droits réservés.</p>
+            <p class="copyright">&copy; {{ current_year }} StreamingPlayer. Tous droits réservés.</p>
         </div>
     </div>
 </body>

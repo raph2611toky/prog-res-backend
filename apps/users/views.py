@@ -136,6 +136,21 @@ class ResendOTPVerificationView(APIView):
         except Exception:
             False
 
+    @swagger_auto_schema(
+        tags=['Users'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=["email"],
+            properties={
+                "email": openapi.Schema(type=openapi.TYPE_STRING, example="utilisateur@exemple.com"),
+            }
+        ),
+        responses={
+            200: UserSerializer(),
+            403: error_schema,
+        },
+        operation_description="Récupère le profil de l'utilisateur authentifié."
+    )
     def post(self, request):
         try:
             user_data = request.data

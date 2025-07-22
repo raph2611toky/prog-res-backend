@@ -20,5 +20,5 @@ urlpatterns = [
     path('user/resend-otp/',ResendOTPVerificationView.as_view(),name='user-resend-otp'),#POST
     path('user/mot-de-passe/oublier/',UserMotDePasseOublieView.as_view(),name='user-mot-de-passe-oublier'),#POST
     path('user/mot-de-passe/reset/',UserResetPasswordView.as_view(),name='user-reset-password'),#POST
-    path('/contact-support/', ContactSupportView.as_view(), name='contact-support'),#POST   
+    path('contact-support/', ContactSupportView.as_view(), name='contact-support'),#POST   
 ]

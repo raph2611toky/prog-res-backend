@@ -9,11 +9,12 @@ from rest_framework_simplejwt.tokens import AccessToken, TokenError
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from base64 import b64decode,b64encode
 from cryptography.hazmat.backends import default_backend
+from difflib import SequenceMatcher
 
 from apps.users.models import User
 
 import os, jwt, logging
-import random
+import random, re
 from helpers.constantes import *
 load_dotenv()
 LOGGER = logging.getLogger(__name__)
@@ -23,42 +24,6 @@ def get_token_from_request(request: Request) -> str:
     if authorization_header and authorization_header.startswith('Bearer '):
         return authorization_header.split()[1]
     return None
-
-def get_notification(woman):
-    menstruations = woman.menstruations.all().order_by('-start_date')
-    if menstruations.count()==0:
-        return "Veuiller nous informer de votre dérnier règle pour avoir un peu plus de prevision sur votre cycle menstruel.Sexual Education vous remercie."
-    last_period = menstruations.first().start_date
-    predicted_ovulation_date = last_period + timedelta(days=woman.get_cycle() - 14)
-    fertility_window_start = predicted_ovulation_date - timedelta(days=4)
-    fertility_window_end = predicted_ovulation_date + timedelta(days=3)
-    last_menstruation = woman.menstruations.order_by('-start_date').first()
-    if not last_menstruation:
-        return "Veuiller nous informer de votre dérnier règle pour avoir un peu plus de prevision sur votre cycle menstruel.Sexual Education vous remercie."
-    
-    predicted_start = last_menstruation.start_date + timedelta(days=woman.get_cycle())
-    predicted_end_date_duration = predicted_start+timedelta(days=int(woman.average_menstruation_duration))
-    
-    today = datetime.now().date()
-    if today.strftime('%Y-%m-%d')in [(m.start_date-timedelta(days=2)).strftime('%Y-%m-%d') for m in woman.menstruations.all().order_by('start_date')]+[(predicted_start-timedelta(days=2)).strftime('%Y-%m-%d')]:
-        current_phase = "normal"
-        advice = random.choice(PRE_MENSTRUATION_TWO_DAYS)
-    elif today.strftime('%Y-%m-%d')in [(m.start_date-timedelta(days=1)).strftime('%Y-%m-%d') for m in woman.menstruations.all().order_by('start_date')]+[(predicted_start-timedelta(days=1)).strftime('%Y-%m-%d')]:
-        current_phase = "normal"
-        advice = random.choice(PRE_MENSTRUATION_ONE_DAY)
-    elif last_menstruation.start_date <= today <= last_menstruation.end_date or predicted_start<=today<=predicted_end_date_duration:
-        current_phase = "menstruation"
-        advice = random.choice(MENSTRUATION_MESSAGES)
-    elif last_menstruation.end_date < today < fertility_window_start:
-        current_phase = "normal"
-        advice = random.choice(PRE_OVULATION_MESSAGES)
-    elif fertility_window_start <= today <= fertility_window_end:
-        current_phase = "fertile"
-        advice = random.choice(FERTILITY_MESSAGES)
-    else:
-        current_phase = "normal"
-        advice = random.choice(POST_OVULATION_MESSAGES)
-    return advice
 
 def get_timezone():
     tz = os.getenv("TIMEZONE_HOURS")
@@ -100,3 +65,24 @@ def get_user(token):
         return None
     except (TokenError, User.DoesNotExist):
         return None
+
+def calcule_de_similarite_de_phrase(text1, text2):
+    def clean_text(text):
+        text = re.sub(r'[^\w\s]', '', text.lower())
+        return text.strip()
+    text1_clean = clean_text(text1)
+    text2_clean = clean_text(text2)
+    words1 = text1_clean.split()
+    words2 = text2_clean.split()
+    if not words1 or not words2:
+        return 0.0
+    total_similarity = 0.0
+    for word1 in words1:
+        best_similarity = 0.0
+        for word2 in words2:
+            similarity = SequenceMatcher(None, word1, word2).ratio()
+            if similarity > best_similarity:
+                best_similarity = similarity
+        total_similarity += best_similarity
+    final_score = total_similarity / len(words1)
+    return final_score

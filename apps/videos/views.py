@@ -1,0 +1,575 @@
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
+from apps.videos.models import Video, Playlist, VideoPlaylist, Commentaire, Message, Tag
+from apps.videos.serializers import VideoSerializer, PlaylistSerializer, CommentaireSerializer, MessageSerializer, TagSerializer
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from django.db.models import Count
+from django.db.models import Max
+from django.utils import timezone
+from datetime import timedelta
+
+
+class TagCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Crée un nouveau tag (en minuscules, sans espaces)",
+        tags=["Tags"],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'name': openapi.Schema(type=openapi.TYPE_STRING, description="Nom du tag (converti en minuscules, sans espaces)"),
+            },
+            required=['name']
+        ),
+        responses={
+            201: TagSerializer(),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request):
+        try:
+            tag_search = Tag.objects.filter(name=request.data.get('name').lower())
+            if tag_search.exists():
+                return Response(TagSerializer(tag_search.first()).data, status=200)
+            serializer = TagSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=201)
+            return Response(serializer.errors, status=400)
+        except Exception as e:
+            return Response({'erreur':str(e)}, status=500)
+
+# Vues pour les Vidéos
+
+class VideoListView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Liste toutes les vidéos avec filtres optionnels",
+        manual_parameters=[
+            openapi.Parameter('tags', openapi.IN_QUERY, description="Tags séparés par des virgules", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('categorie', openapi.IN_QUERY, description="Catégorie de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('date_filter', openapi.IN_QUERY, description="Filtre de date (recent, today, week, month, year)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('start_date', openapi.IN_QUERY, description="Date de début (format: YYYY-MM-DD)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('end_date', openapi.IN_QUERY, description="Date de fin (format: YYYY-MM-DD)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('order_by', openapi.IN_QUERY, description="Trier par (likes, dislikes, comments, date)", type=openapi.TYPE_STRING, required=False),
+        ],
+        responses={
+            200: VideoSerializer(many=True),
+            400: openapi.Response(
+                description="Requête invalide",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        videos = Video.objects.all()
+
+        tags = request.query_params.get('tags')
+        if tags:
+            videos = videos.filter(tags__name__in=tags.split(','))
+
+        categorie = request.query_params.get('categorie')
+        if categorie:
+            videos = videos.filter(categorie=categorie)
+
+        date_filter = request.query_params.get('date_filter')
+        now = timezone.now()
+        if date_filter == 'today':
+            videos = videos.filter(uploaded_at__date=now.date())
+        elif date_filter == 'week':
+            videos = videos.filter(uploaded_at__gte=now - timedelta(days=7))
+        elif date_filter == 'month':
+            videos = videos.filter(uploaded_at__gte=now - timedelta(days=30))
+        elif date_filter == 'year':
+            videos = videos.filter(uploaded_at__gte=now - timedelta(days=365))
+        elif date_filter == 'recent':
+            videos = videos.order_by('-uploaded_at')
+
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date and end_date:
+            videos = videos.filter(uploaded_at__range=[start_date, end_date])
+
+        order_by = request.query_params.get('order_by')
+        if order_by == 'likes':
+            videos = videos.annotate(like_count=Count('likes')).order_by('-like_count')
+        elif order_by == 'dislikes':
+            videos = videos.annotate(dislike_count=Count('dislikes')).order_by('-dislike_count')
+        elif order_by == 'comments':
+            videos = videos.annotate(comment_count=Count('commentaires')).order_by('-comment_count')
+        elif order_by == 'date':
+            videos = videos.order_by('-uploaded_at')
+
+        serializer = VideoSerializer(videos, many=True, context={'request': request})
+        return Response(serializer.data)
+
+class VideoDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Récupère les détails d'une vidéo spécifique",
+        responses={
+            200: VideoSerializer(),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            serializer = VideoSerializer(video, context={'request': request})
+            return Response(serializer.data)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class VideoCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @swagger_auto_schema(
+        operation_description="Crée une nouvelle vidéo avec fichiers joints",
+        manual_parameters=[
+            openapi.Parameter('titre', openapi.IN_FORM, description="Titre de la vidéo", type=openapi.TYPE_STRING, required=True),
+            openapi.Parameter('description', openapi.IN_FORM, description="Description de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('fichier', openapi.IN_FORM, description="Fichier vidéo", type=openapi.TYPE_FILE, required=True),
+            openapi.Parameter('affichage', openapi.IN_FORM, description="Image d'affichage", type=openapi.TYPE_FILE, required=False),
+            openapi.Parameter('categorie', openapi.IN_FORM, description="Catégorie de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('tag_ids', openapi.IN_FORM, description="Liste des IDs des tags", type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), required=False),
+            openapi.Parameter('playlist_id', openapi.IN_FORM, description="ID de la playlist", type=openapi.TYPE_INTEGER, required=False),
+            openapi.Parameter('visibilite', openapi.IN_FORM, description="Visibilité (PUBLIC ou PRIVATE)", type=openapi.TYPE_STRING, enum=['PUBLIC', 'PRIVATE'], required=False),
+            openapi.Parameter('autoriser_commentaire', openapi.IN_FORM, description="Autoriser les commentaires", type=openapi.TYPE_BOOLEAN, required=False),
+            openapi.Parameter('ordre_de_commentaire', openapi.IN_FORM, description="Ordre des commentaires (TOP ou NOUVEAUTE)", type=openapi.TYPE_STRING, enum=['TOP', 'NOUVEAUTE'], required=False),
+        ],
+        responses={
+            201: VideoSerializer(),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request):
+        serializer = VideoSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            video = serializer.save()
+            fichier = request.FILES.get('fichier',None)
+            if fichier:
+                video.fichier = fichier
+            video.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+class VideoUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @swagger_auto_schema(
+        operation_description="Met à jour une vidéo existante",
+        manual_parameters=[
+            openapi.Parameter('titre', openapi.IN_FORM, description="Titre de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('description', openapi.IN_FORM, description="Description de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('fichier', openapi.IN_FORM, description="Fichier vidéo", type=openapi.TYPE_FILE, required=False),
+            openapi.Parameter('affichage', openapi.IN_FORM, description="Image d'affichage", type=openapi.TYPE_FILE, required=False),
+            openapi.Parameter('categorie', openapi.IN_FORM, description="Catégorie de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('tag_ids', openapi.IN_FORM, description="Liste des IDs des tags", type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), required=False),
+            openapi.Parameter('playlist_id', openapi.IN_FORM, description="ID de la playlist", type=openapi.TYPE_INTEGER, required=False),
+            openapi.Parameter('visibilite', openapi.IN_FORM, description="Visibilité (PUBLIC ou PRIVATE)", type=openapi.TYPE_STRING, enum=['PUBLIC', 'PRIVATE'], required=False),
+            openapi.Parameter('autoriser_commentaire', openapi.IN_FORM, description="Autoriser les commentaires", type=openapi.TYPE_BOOLEAN, required=False),
+            openapi.Parameter('ordre_de_commentaire', openapi.IN_FORM, description="Ordre des commentaires (TOP ou NOUVEAUTE)", type=openapi.TYPE_STRING, enum=['TOP', 'NOUVEAUTE'], required=False),
+        ],
+        responses={
+            200: VideoSerializer(),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def put(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            serializer = VideoSerializer(video, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class VideoDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Supprime une vidéo",
+        responses={
+            204: openapi.Response(
+                description="Vidéo supprimée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def delete(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            if hasattr(video, 'videos_playlist'):
+                video.videos_playlist.delete()
+            video.delete()
+            return Response({"message":"Video supprimé"},status=204)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+# Vues pour les Playlists
+
+class PlaylistListView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Liste toutes les playlists",
+        manual_parameters=[
+            openapi.Parameter('visibilite', openapi.IN_QUERY, description="Filtrage par visibilité (PUBLIC ou PRIVATE)", type=openapi.TYPE_STRING, enum=['PUBLIC', 'PRIVATE'], required=False),
+        ],
+        responses={
+            200: PlaylistSerializer(many=True),
+            400: openapi.Response(
+                description="Requête invalide",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        playlists = Playlist.objects.all()
+        visibilite = request.query_params.get('visibilite')
+        if visibilite:
+            playlists = playlists.filter(visibilite=visibilite)
+        serializer = PlaylistSerializer(playlists, many=True, context={'request': request})
+        return Response(serializer.data)
+
+class PlaylistDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Récupère les détails d'une playlist spécifique",
+        responses={
+            200: PlaylistSerializer(),
+            404: openapi.Response(
+                description="Playlist non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, playlist_id):
+        try:
+            playlist = Playlist.objects.get(id=playlist_id)
+            serializer = PlaylistSerializer(playlist, context={'request': request})
+            return Response(serializer.data)
+        except Playlist.DoesNotExist:
+            return Response({'error': 'Playlist non trouvée'}, status=404)
+
+class PlaylistCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Crée une nouvelle playlist",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'titre': openapi.Schema(type=openapi.TYPE_STRING, description="Titre de la playlist"),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Description de la playlist", nullable=True),
+                'visibilite': openapi.Schema(type=openapi.TYPE_STRING, description="Visibilité (PUBLIC ou PRIVATE)", enum=['PUBLIC', 'PRIVATE']),
+                'video_ids': openapi.Schema(type=openapi.TYPE_ARRAY, description="Liste des IDs des vidéos", items=openapi.Items(type=openapi.TYPE_INTEGER), nullable=True),
+            },
+            required=['titre']
+        ),
+        responses={
+            201: PlaylistSerializer(),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request):
+        serializer = PlaylistSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+class PlaylistUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Met à jour une playlist existante",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'titre': openapi.Schema(type=openapi.TYPE_STRING, description="Titre de la playlist"),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Description de la playlist", nullable=True),
+                'visibilite': openapi.Schema(type=openapi.TYPE_STRING, description="Visibilité (PUBLIC ou PRIVATE)", enum=['PUBLIC', 'PRIVATE']),
+                'video_ids': openapi.Schema(type=openapi.TYPE_ARRAY, description="Liste des IDs des vidéos", items=openapi.Items(type=openapi.TYPE_INTEGER), nullable=True),
+            }
+        ),
+        responses={
+            200: PlaylistSerializer(),
+            404: openapi.Response(
+                description="Playlist non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def put(self, request, playlist_id):
+        try:
+            playlist = Playlist.objects.get(id=playlist_id)
+            serializer = PlaylistSerializer(playlist, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=400)
+        except Playlist.DoesNotExist:
+            return Response({'error': 'Playlist non trouvée'}, status=404)
+
+class PlaylistDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Supprime une playlist",
+        responses={
+            204: openapi.Response(description="Playlist supprimée"),
+            404: openapi.Response(
+                description="Playlist non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def delete(self, request , playlist_id):
+        try:
+            playlist = Playlist.objects.get(id=playlist_id)
+            for vp in VideoPlaylist.objects.filter(playlist=playlist):
+                vp.video.dans_un_playlist = False
+                vp.video.save()
+            playlist.delete()
+            return Response(status=204)
+        except Playlist.DoesNotExist:
+            return Response({'error': 'Playlist non trouvée'}, status=404)
+
+# Vues pour les Commentaires
+
+class CommentListView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Liste des commentaires pour une vidéo, triés par TOP ou NOUVEAUTE",
+        responses={
+            200: CommentaireSerializer(many=True),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            comments = video.commentaires.all()
+            if video.ordre_de_commentaire == 'TOP':
+                comments = comments.annotate(message_count=Count('messages')).order_by('-message_count')
+            else:
+                comments = comments.order_by('-created_at')
+            serializer = CommentaireSerializer(comments, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class CommentCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Crée un commentaire pour une vidéo",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'video': openapi.Schema(type=openapi.TYPE_INTEGER, description="ID de la vidéo"),
+                'contenu': openapi.Schema(type=openapi.TYPE_STRING, description="Contenu de message"),
+            },
+            required=['video']
+        ),
+        responses={
+            201: CommentaireSerializer(),
+            403: openapi.Response(
+                description="Commentaires désactivés",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            if not video.autoriser_commentaire:
+                return Response({'error': 'Les commentaires sont désactivés pour cette vidéo'}, status=403)
+            new_commentaire = Commentaire.objects.create(video=video)
+            new_commentaire.membres.add(request.user)
+            Message.objects.create(commentaire=new_commentaire,envoyeur=request.user, contenu=request.data.get('contenu',''))
+            return Response(CommentaireSerializer(new_commentaire).data, status=201)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+        except Exception as e:
+            return Response({'erreur':str(e)},status=500)
+
+# Vues pour les Messages
+
+class MessageListView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Liste des messages pour un commentaire, triés par date (plus récent en premier)",
+        responses={
+            200: MessageSerializer(many=True),
+            404: openapi.Response(
+                description="Commentaire non trouvé",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, comment_id):
+        try:
+            comment = Commentaire.objects.get(id=comment_id)
+            messages = comment.messages.all().order_by('-created_at')
+            serializer = MessageSerializer(messages, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Commentaire.DoesNotExist:
+            return Response({'error': 'Commentaire non trouvé'}, status=404)
+
+class MessageCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Crée un message (réponse) pour un commentaire",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'comment_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="ID de la commentaire"),
+                'contenu': openapi.Schema(type=openapi.TYPE_STRING, description="Contenu du message", nullable=True),
+            }
+        ),
+        responses={
+            201: MessageSerializer(),
+            404: openapi.Response(
+                description="Commentaire non trouvé",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            400: openapi.Response(
+                description="Données invalides",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request):
+        try:
+            comment = Commentaire.objects.get(id=request.data.get('comment_id'))
+            serializer = MessageSerializer(data=request.data, context={'request': request})
+            if serializer.is_valid():
+                serializer.save(commentaire=comment, envoyeur=request.user)
+                return Response(serializer.data, status=201)
+            return Response(serializer.errors, status=400)
+        except Commentaire.DoesNotExist:
+            return Response({'error': 'Commentaire non trouvé'}, status=404)
+
+# Vue de Recherche
+
+class VideoSearchView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Recherche de vidéos par critères",
+        manual_parameters=[
+            openapi.Parameter('search_term', openapi.IN_QUERY, description="Terme de recherche (titre/description)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('tags', openapi.IN_QUERY, description="Tags séparés par des virgules", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('categorie', openapi.IN_QUERY, description="Catégorie de la vidéo", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('date_filter', openapi.IN_QUERY, description="Filtre de date (recent, today, week, month, year)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('start_date', openapi.IN_QUERY, description="Date de début (format: YYYY-MM-DD)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('end_date', openapi.IN_QUERY, description="Date de fin (format: YYYY-MM-DD)", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('order_by', openapi.IN_QUERY, description="Trier par (likes, dislikes, comments, date)", type=openapi.TYPE_STRING, required=False),
+        ],
+        responses={
+            200: VideoSerializer(many=True),
+            400: openapi.Response(
+                description="Requête invalide",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        videos = Video.objects.all()
+
+        search_term = request.query_params.get('search_term')
+        if search_term:
+            videos = videos.filter(titre__icontains=search_term) | videos.filter(description__icontains=search_term)
+
+        tags = request.query_params.get('tags')
+        if tags:
+            videos = videos.filter(tags__name__in=tags.split(','))
+
+        categorie = request.query_params.get('categorie')
+        if categorie:
+            videos = videos.filter(categorie=categorie)
+
+        date_filter = request.query_params.get('date_filter')
+        now = timezone.now()
+        if date_filter == 'today':
+            videos = videos.filter(uploaded_at__date=now.date())
+        elif date_filter == 'week':
+            videos = videos.filter(uploaded_at__gte=now - timedelta(days=7))
+        elif date_filter == 'month':
+            videos = videos.filter(uploaded_at__gte=now - timedelta(days=30))
+        elif date_filter == 'year':
+            videos = videos.filter(uploaded_at__gte=now - timedelta(days=365))
+        elif date_filter == 'recent':
+            videos = videos.order_by('-uploaded_at')
+
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date and end_date:
+            videos = videos.filter(uploaded_at__range=[start_date, end_date])
+
+        order_by = request.query_params.get('order_by')
+        if order_by == 'likes':
+            videos = videos.annotate(like_count=Count('likes')).order_by('-like_count')
+        elif order_by == 'dislikes':
+            videos = videos.annotate(dislike_count=Count('dislikes')).order_by('-dislike_count')
+        elif order_by == 'comments':
+            videos = videos.annotate(comment_count=Count('commentaires')).order_by('-comment_count')
+        elif order_by == 'date':
+            videos = videos.order_by('-uploaded_at')
+
+        serializer = VideoSerializer(videos, many=True, context={'request': request})
+        return Response(serializer.data)
