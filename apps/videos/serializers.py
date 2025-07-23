@@ -220,13 +220,14 @@ class VideoSerializer(serializers.ModelSerializer):
 
 class ChaineSerializer(serializers.ModelSerializer):
     videos = serializers.SerializerMethodField()
+    abonnees = UserSerializer(many=True)
     video_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
 
     class Meta:
         model = Chaine
-        fields = ['id', 'titre', 'description', 'visibilite', 'videos', 'video_ids', 'created_at']
+        fields = ['id', 'titre', 'description', 'visibilite', 'videos', 'video_ids', 'abonnees', 'created_at']
 
     def get_videos(self, obj):
         video_chaines = VideoChaine.objects.filter(chaine=obj).order_by('ordre')
@@ -261,3 +262,11 @@ class ChaineSerializer(serializers.ModelSerializer):
                 video.save()
         
         return instance
+    
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get("request", None)
+        if request is not None:
+            user = request.user
+            representation['is_subscribed_by_me'] = user.id in [u.id for u in instance.abonnees.all()]
+        return representation

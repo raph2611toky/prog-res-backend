@@ -1,8 +1,10 @@
 from django.urls import path
 from apps.videos.views import (
-    VideoListView, VideoDetailView, VideoCreateView, VideoUpdateView, VideoDeleteView,TagCreateView,
+    VideoListView, VideoDetailView, VideoCreateView, VideoUpdateView, VideoDeleteView, TagCreateView,
     ChaineListView, ChaineDetailView, ChaineCreateView, ChaineUpdateView, ChaineDeleteView,
-    CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView,VideoChunkedUploadView,
+    CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView, VideoChunkedUploadView,
+    LikedVideosView, SubscribedChainesView, HistoriqueVuesView, DislikedVideosView, RegarderPlusTardListView,
+    RegarderPlusTardMarquerView,
 )
 
 urlpatterns = [
@@ -26,4 +28,11 @@ urlpatterns = [
 
     path('comments/<int:comment_id>/messages/', MessageListView.as_view(), name='message-list'),
     path('comments/<int:comment_id>/messages/create/', MessageCreateView.as_view(), name='message-create'),
+    
+    path('historique/vues/', HistoriqueVuesView.as_view(), name='historique-vues'),
+    path('videos/liked/', LikedVideosView.as_view(), name='liked-videos'),
+    path('videos/disliked/', DislikedVideosView.as_view(), name='disliked-videos'),
+    path('videos/regarder-plus-tard/list/', RegarderPlusTardListView.as_view(), name='regarder-plus-tard-list'),
+    path('videos/regarder-plus-tard/marquer/', RegarderPlusTardMarquerView.as_view(), name='marquer-un-video-a-regarder-plus-tard'),
+    path('chaines/subscribed/', SubscribedChainesView.as_view(), name='subscribed-chaines'),
 ]

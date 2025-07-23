@@ -2,7 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from apps.videos.models import Video, Chaine, VideoChaine, Commentaire, Message, Tag
+from apps.videos.models import Video, Chaine, VideoChaine, Commentaire, Message, Tag, VideoVue, VideoLike, VideoDislike, VideoRegarderPlusTard
 from apps.videos.serializers import VideoSerializer, ChaineSerializer, CommentaireSerializer, MessageSerializer, TagSerializer
 from drf_yasg.utils import swagger_auto_schema
 from chunked_upload.views import ChunkedUploadView
@@ -49,7 +49,7 @@ class TagCreateView(APIView):
                 return Response(serializer.data, status=201)
             return Response(serializer.errors, status=400)
         except Exception as e:
-            return Response({'erreur':str(e)}, status=500)
+            return Response({'erreur': str(e)}, status=500)
 
 # Vues pour les Vidéos
 
@@ -308,7 +308,7 @@ class VideoDeleteView(APIView):
             if hasattr(video, 'videos_chaine'):
                 video.videos_chaine.delete()
             video.delete()
-            return Response({"message":"Video supprimé"},status=204)
+            return Response({"message": "Video supprimé"}, status=204)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
 
@@ -439,7 +439,7 @@ class ChaineDeleteView(APIView):
             )
         }
     )
-    def delete(self, request , chaine_id):
+    def delete(self, request, chaine_id):
         try:
             chaine = Chaine.objects.get(id=chaine_id)
             for vp in VideoChaine.objects.filter(chaine=chaine):
@@ -514,12 +514,12 @@ class CommentCreateView(APIView):
                 return Response({'error': 'Les commentaires sont désactivés pour cette vidéo'}, status=403)
             new_commentaire = Commentaire.objects.create(video=video)
             new_commentaire.membres.add(request.user)
-            Message.objects.create(commentaire=new_commentaire,envoyeur=request.user, contenu=request.data.get('contenu',''))
+            Message.objects.create(commentaire=new_commentaire, envoyeur=request.user, contenu=request.data.get('contenu', ''))
             return Response(CommentaireSerializer(new_commentaire).data, status=201)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
         except Exception as e:
-            return Response({'erreur':str(e)},status=500)
+            return Response({'erreur': str(e)}, status=500)
 
 # Vues pour les Messages
 
@@ -649,3 +649,167 @@ class VideoSearchView(APIView):
 
         serializer = VideoSerializer(videos, many=True, context={'request': request})
         return Response(serializer.data)
+
+class HistoriqueVuesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Liste les vidéos vues par l'utilisateur authentifié, triées par date de vue la plus récente",
+        tags=["Historique"],
+        responses={
+            200: VideoSerializer(many=True),
+            401: openapi.Response(
+                description="Non authentifié",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            500: openapi.Response(
+                description="Erreur serveur",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"erreur": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        try:
+            vues = VideoVue.objects.filter(user=request.user).order_by('-created_at')
+            videos = [vue.video for vue in vues]
+            serializer = VideoSerializer(videos, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        except Exception as e:
+            return Response({"erreur": str(e)}, status=500)
+
+class LikedVideosView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Liste les vidéos aimées par l'utilisateur authentifié, triées par date de like la plus récente",
+        tags=["Vidéos"],
+        responses={
+            200: VideoSerializer(many=True),
+            401: openapi.Response(
+                description="Non authentifié",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            500: openapi.Response(
+                description="Erreur serveur",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"erreur": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        try:
+            likes = VideoLike.objects.filter(user=request.user).order_by('-created_at')
+            videos = [like.video for like in likes]
+            serializer = VideoSerializer(videos, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        except Exception as e:
+            return Response({"erreur": str(e)}, status=500)
+
+class DislikedVideosView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Liste les vidéos dislikées par l'utilisateur authentifié, triées par date de dislike la plus récente",
+        tags=["Vidéos"],
+        responses={
+            200: VideoSerializer(many=True),
+            401: openapi.Response(
+                description="Non authentifié",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            500: openapi.Response(
+                description="Erreur serveur",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"erreur": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        try:
+            dislikes = VideoDislike.objects.filter(user=request.user).order_by('-created_at')
+            videos = [dislike.video for dislike in dislikes]
+            serializer = VideoSerializer(videos, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        except Exception as e:
+            return Response({"erreur": str(e)}, status=500)
+
+class RegarderPlusTardListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Liste les vidéos marquées 'à regarder plus tard' par l'utilisateur authentifié, triées par date d'ajout la plus récente",
+        tags=["Vidéos"],
+        responses={
+            200: VideoSerializer(many=True),
+            401: openapi.Response(
+                description="Non authentifié",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            500: openapi.Response(
+                description="Erreur serveur",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"erreur": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        try:
+            regarder_plus_tard = VideoRegarderPlusTard.objects.filter(user=request.user).order_by('-created_at')
+            videos = [rpt.video for rpt in regarder_plus_tard]
+            serializer = VideoSerializer(videos, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        except Exception as e:
+            return Response({"erreur": str(e)}, status=500)
+
+class RegarderPlusTardMarquerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Marqué un video 'à regarder plus tard' par l'utilisateur authentifié",
+        tags=["Vidéos"],
+        responses={
+            200: openapi.Response(
+                description="Reussi",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            401: openapi.Response(
+                description="Non authentifié",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            500: openapi.Response(
+                description="Erreur serveur",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"erreur": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def put(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            VideoRegarderPlusTard.objects.create(user=request.user, video=video)
+            return Response({"message":"✅Video marqué pour regarder plus tard"}, status=200)
+        except Exception as e:
+            return Response({"erreur": str(e)}, status=500)
+
+
+class SubscribedChainesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Liste toutes les chaînes auxquelles l'utilisateur authentifié est abonné",
+        tags=["Chaînes"],
+        responses={
+            200: ChaineSerializer(many=True),
+            401: openapi.Response(
+                description="Non authentifié",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            500: openapi.Response(
+                description="Erreur serveur",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"erreur": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request):
+        try:
+            chaines = Chaine.objects.filter(abonnees=request.user)
+            serializer = ChaineSerializer(chaines, many=True, context={'request': request})
+            return Response(serializer.data, status=200)
+        except Exception as e:
+            return Response({"erreur": str(e)}, status=500)
