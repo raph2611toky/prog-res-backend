@@ -2,15 +2,20 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
-from apps.videos.models import Video, Playlist, VideoPlaylist, Commentaire, Message, Tag
-from apps.videos.serializers import VideoSerializer, PlaylistSerializer, CommentaireSerializer, MessageSerializer, TagSerializer
+from apps.videos.models import Video, Chaine, VideoChaine, Commentaire, Message, Tag
+from apps.videos.serializers import VideoSerializer, ChaineSerializer, CommentaireSerializer, MessageSerializer, TagSerializer
 from drf_yasg.utils import swagger_auto_schema
+from chunked_upload.views import ChunkedUploadView
+from chunked_upload.models import ChunkedUpload
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 from drf_yasg import openapi
 from django.db.models import Count
 from django.db.models import Max
 from django.utils import timezone
 from datetime import timedelta
 
+import uuid, time
 
 class TagCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -144,8 +149,8 @@ class VideoCreateView(APIView):
             openapi.Parameter('fichier', openapi.IN_FORM, description="Fichier vidéo", type=openapi.TYPE_FILE, required=True),
             openapi.Parameter('affichage', openapi.IN_FORM, description="Image d'affichage", type=openapi.TYPE_FILE, required=False),
             openapi.Parameter('categorie', openapi.IN_FORM, description="Catégorie de la vidéo", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('tag_ids', openapi.IN_FORM, description="Liste des IDs des tags", type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), required=False),
-            openapi.Parameter('playlist_id', openapi.IN_FORM, description="ID de la playlist", type=openapi.TYPE_INTEGER, required=False),
+            openapi.Parameter('tags', openapi.IN_FORM, description="Tags séparés par des virgules", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('chaine_id', openapi.IN_FORM, description="ID de la chaine", type=openapi.TYPE_INTEGER, required=False),
             openapi.Parameter('visibilite', openapi.IN_FORM, description="Visibilité (PUBLIC ou PRIVATE)", type=openapi.TYPE_STRING, enum=['PUBLIC', 'PRIVATE'], required=False),
             openapi.Parameter('autoriser_commentaire', openapi.IN_FORM, description="Autoriser les commentaires", type=openapi.TYPE_BOOLEAN, required=False),
             openapi.Parameter('ordre_de_commentaire', openapi.IN_FORM, description="Ordre des commentaires (TOP ou NOUVEAUTE)", type=openapi.TYPE_STRING, enum=['TOP', 'NOUVEAUTE'], required=False),
@@ -159,15 +164,81 @@ class VideoCreateView(APIView):
         }
     )
     def post(self, request):
+        tags_str = request.data.get('tags', '')
+        tags_list = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+        request.data._mutable = True
+        request.data['tags_names'] = tags_list
+        request.data._mutable = False
         serializer = VideoSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             video = serializer.save()
-            fichier = request.FILES.get('fichier',None)
+            fichier = request.FILES.get('fichier', None)
             if fichier:
                 video.fichier = fichier
             video.save()
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
+
+class VideoChunkedUploadView(ChunkedUploadView):
+    model = ChunkedUpload
+    field_name = 'fichier'
+    permission_classes = [IsAuthenticated]
+
+    def get_extra_attrs(self):
+        return {
+            'user': self.request.user,
+            'upload_id': str(uuid.uuid4()),
+            'start_time': time.time(),
+        }
+
+    def on_completion(self, uploaded_file, request):
+        data = request.POST.copy()
+        data['fichier'] = uploaded_file
+        tags_str = data.get('tags', '')
+        tags_list = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+        data['tags_names'] = tags_list
+        serializer = VideoSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            video = serializer.save()
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"upload_{request.user.id}_{self.get_extra_attrs()['upload_id']}",
+                {
+                    'type': 'upload_progress',
+                    'progress': 100,
+                    'speed': 0,
+                    'total_duration': 0,
+                    'remaining_duration': 0,
+                    'remaining_size': 0,
+                    'video_id': video.id,
+                    'status': 'completed'
+                }
+            )
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+    def get_response_data(self, chunked_upload, request):
+        progress = (chunked_upload.offset / chunked_upload.file.size) * 100
+        elapsed_time = time.time() - chunked_upload.start_time
+        speed = chunked_upload.offset / elapsed_time if elapsed_time > 0 else 0
+        total_duration = chunked_upload.file.size / speed if speed > 0 else 0
+        remaining_duration = total_duration * (1 - progress / 100)
+        remaining_size = chunked_upload.file.size - chunked_upload.offset
+
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"upload_{request.user.id}_{chunked_upload.upload_id}",
+            {
+                'type': 'upload_progress',
+                'progress': progress,
+                'speed': speed,
+                'total_duration': total_duration,
+                'remaining_duration': remaining_duration,
+                'remaining_size': remaining_size,
+                'status': 'uploading'
+            }
+        )
+        return {'upload_id': chunked_upload.upload_id, 'offset': chunked_upload.offset}
 
 class VideoUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -181,8 +252,8 @@ class VideoUpdateView(APIView):
             openapi.Parameter('fichier', openapi.IN_FORM, description="Fichier vidéo", type=openapi.TYPE_FILE, required=False),
             openapi.Parameter('affichage', openapi.IN_FORM, description="Image d'affichage", type=openapi.TYPE_FILE, required=False),
             openapi.Parameter('categorie', openapi.IN_FORM, description="Catégorie de la vidéo", type=openapi.TYPE_STRING, required=False),
-            openapi.Parameter('tag_ids', openapi.IN_FORM, description="Liste des IDs des tags", type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_INTEGER), required=False),
-            openapi.Parameter('playlist_id', openapi.IN_FORM, description="ID de la playlist", type=openapi.TYPE_INTEGER, required=False),
+            openapi.Parameter('tags', openapi.IN_FORM, description="Tags séparés par des virgules", type=openapi.TYPE_STRING, required=False),
+            openapi.Parameter('chaine_id', openapi.IN_FORM, description="ID de la chaine", type=openapi.TYPE_INTEGER, required=False),
             openapi.Parameter('visibilite', openapi.IN_FORM, description="Visibilité (PUBLIC ou PRIVATE)", type=openapi.TYPE_STRING, enum=['PUBLIC', 'PRIVATE'], required=False),
             openapi.Parameter('autoriser_commentaire', openapi.IN_FORM, description="Autoriser les commentaires", type=openapi.TYPE_BOOLEAN, required=False),
             openapi.Parameter('ordre_de_commentaire', openapi.IN_FORM, description="Ordre des commentaires (TOP ou NOUVEAUTE)", type=openapi.TYPE_STRING, enum=['TOP', 'NOUVEAUTE'], required=False),
@@ -202,6 +273,11 @@ class VideoUpdateView(APIView):
     def put(self, request, video_id):
         try:
             video = Video.objects.get(id=video_id)
+            tags_str = request.data.get('tags', '')
+            tags_list = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+            request.data._mutable = True
+            request.data['tags_names'] = tags_list
+            request.data._mutable = False
             serializer = VideoSerializer(video, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
@@ -229,25 +305,25 @@ class VideoDeleteView(APIView):
     def delete(self, request, video_id):
         try:
             video = Video.objects.get(id=video_id)
-            if hasattr(video, 'videos_playlist'):
-                video.videos_playlist.delete()
+            if hasattr(video, 'videos_chaine'):
+                video.videos_chaine.delete()
             video.delete()
             return Response({"message":"Video supprimé"},status=204)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
 
-# Vues pour les Playlists
+# Vues pour les Chaines
 
-class PlaylistListView(APIView):
+class ChaineListView(APIView):
     permission_classes = [AllowAny]
 
     @swagger_auto_schema(
-        operation_description="Liste toutes les playlists",
+        operation_description="Liste toutes les chaines",
         manual_parameters=[
             openapi.Parameter('visibilite', openapi.IN_QUERY, description="Filtrage par visibilité (PUBLIC ou PRIVATE)", type=openapi.TYPE_STRING, enum=['PUBLIC', 'PRIVATE'], required=False),
         ],
         responses={
-            200: PlaylistSerializer(many=True),
+            200: ChaineSerializer(many=True),
             400: openapi.Response(
                 description="Requête invalide",
                 schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
@@ -255,51 +331,51 @@ class PlaylistListView(APIView):
         }
     )
     def get(self, request):
-        playlists = Playlist.objects.all()
+        chaines = Chaine.objects.all()
         visibilite = request.query_params.get('visibilite')
         if visibilite:
-            playlists = playlists.filter(visibilite=visibilite)
-        serializer = PlaylistSerializer(playlists, many=True, context={'request': request})
+            chaines = chaines.filter(visibilite=visibilite)
+        serializer = ChaineSerializer(chaines, many=True, context={'request': request})
         return Response(serializer.data)
 
-class PlaylistDetailView(APIView):
+class ChaineDetailView(APIView):
     permission_classes = [AllowAny]
 
     @swagger_auto_schema(
-        operation_description="Récupère les détails d'une playlist spécifique",
+        operation_description="Récupère les détails d'une chaine spécifique",
         responses={
-            200: PlaylistSerializer(),
+            200: ChaineSerializer(),
             404: openapi.Response(
-                description="Playlist non trouvée",
+                description="Chaine non trouvée",
                 schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
             )
         }
     )
-    def get(self, request, playlist_id):
+    def get(self, request, chaine_id):
         try:
-            playlist = Playlist.objects.get(id=playlist_id)
-            serializer = PlaylistSerializer(playlist, context={'request': request})
+            chaine = Chaine.objects.get(id=chaine_id)
+            serializer = ChaineSerializer(chaine, context={'request': request})
             return Response(serializer.data)
-        except Playlist.DoesNotExist:
-            return Response({'error': 'Playlist non trouvée'}, status=404)
+        except Chaine.DoesNotExist:
+            return Response({'error': 'Chaine non trouvée'}, status=404)
 
-class PlaylistCreateView(APIView):
+class ChaineCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Crée une nouvelle playlist",
+        operation_description="Crée une nouvelle chaine",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'titre': openapi.Schema(type=openapi.TYPE_STRING, description="Titre de la playlist"),
-                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Description de la playlist", nullable=True),
+                'titre': openapi.Schema(type=openapi.TYPE_STRING, description="Titre de la chaine"),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Description de la chaine", nullable=True),
                 'visibilite': openapi.Schema(type=openapi.TYPE_STRING, description="Visibilité (PUBLIC ou PRIVATE)", enum=['PUBLIC', 'PRIVATE']),
                 'video_ids': openapi.Schema(type=openapi.TYPE_ARRAY, description="Liste des IDs des vidéos", items=openapi.Items(type=openapi.TYPE_INTEGER), nullable=True),
             },
             required=['titre']
         ),
         responses={
-            201: PlaylistSerializer(),
+            201: ChaineSerializer(),
             400: openapi.Response(
                 description="Données invalides",
                 schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
@@ -307,30 +383,30 @@ class PlaylistCreateView(APIView):
         }
     )
     def post(self, request):
-        serializer = PlaylistSerializer(data=request.data, context={'request': request})
+        serializer = ChaineSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
 
-class PlaylistUpdateView(APIView):
+class ChaineUpdateView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Met à jour une playlist existante",
+        operation_description="Met à jour une chaine existante",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
-                'titre': openapi.Schema(type=openapi.TYPE_STRING, description="Titre de la playlist"),
-                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Description de la playlist", nullable=True),
+                'titre': openapi.Schema(type=openapi.TYPE_STRING, description="Titre de la chaine"),
+                'description': openapi.Schema(type=openapi.TYPE_STRING, description="Description de la chaine", nullable=True),
                 'visibilite': openapi.Schema(type=openapi.TYPE_STRING, description="Visibilité (PUBLIC ou PRIVATE)", enum=['PUBLIC', 'PRIVATE']),
                 'video_ids': openapi.Schema(type=openapi.TYPE_ARRAY, description="Liste des IDs des vidéos", items=openapi.Items(type=openapi.TYPE_INTEGER), nullable=True),
             }
         ),
         responses={
-            200: PlaylistSerializer(),
+            200: ChaineSerializer(),
             404: openapi.Response(
-                description="Playlist non trouvée",
+                description="Chaine non trouvée",
                 schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
             ),
             400: openapi.Response(
@@ -339,40 +415,40 @@ class PlaylistUpdateView(APIView):
             )
         }
     )
-    def put(self, request, playlist_id):
+    def put(self, request, chaine_id):
         try:
-            playlist = Playlist.objects.get(id=playlist_id)
-            serializer = PlaylistSerializer(playlist, data=request.data, partial=True, context={'request': request})
+            chaine = Chaine.objects.get(id=chaine_id)
+            serializer = ChaineSerializer(chaine, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=400)
-        except Playlist.DoesNotExist:
-            return Response({'error': 'Playlist non trouvée'}, status=404)
+        except Chaine.DoesNotExist:
+            return Response({'error': 'Chaine non trouvée'}, status=404)
 
-class PlaylistDeleteView(APIView):
+class ChaineDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Supprime une playlist",
+        operation_description="Supprime une chaine",
         responses={
-            204: openapi.Response(description="Playlist supprimée"),
+            204: openapi.Response(description="Chaine supprimée"),
             404: openapi.Response(
-                description="Playlist non trouvée",
+                description="Chaine non trouvée",
                 schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
             )
         }
     )
-    def delete(self, request , playlist_id):
+    def delete(self, request , chaine_id):
         try:
-            playlist = Playlist.objects.get(id=playlist_id)
-            for vp in VideoPlaylist.objects.filter(playlist=playlist):
-                vp.video.dans_un_playlist = False
+            chaine = Chaine.objects.get(id=chaine_id)
+            for vp in VideoChaine.objects.filter(chaine=chaine):
+                vp.video.dans_un_chaine = False
                 vp.video.save()
-            playlist.delete()
+            chaine.delete()
             return Response(status=204)
-        except Playlist.DoesNotExist:
-            return Response({'error': 'Playlist non trouvée'}, status=404)
+        except Chaine.DoesNotExist:
+            return Response({'error': 'Chaine non trouvée'}, status=404)
 
 # Vues pour les Commentaires
 

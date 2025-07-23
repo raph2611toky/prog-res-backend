@@ -1,24 +1,25 @@
 from django.urls import path
 from apps.videos.views import (
     VideoListView, VideoDetailView, VideoCreateView, VideoUpdateView, VideoDeleteView,TagCreateView,
-    PlaylistListView, PlaylistDetailView, PlaylistCreateView, PlaylistUpdateView, PlaylistDeleteView,
-    CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView,
+    ChaineListView, ChaineDetailView, ChaineCreateView, ChaineUpdateView, ChaineDeleteView,
+    CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView,VideoChunkedUploadView,
 )
 
 urlpatterns = [
     path('videos/', VideoListView.as_view(), name='video-list'),
     path('videos/<int:video_id>/', VideoDetailView.as_view(), name='video-detail'),
     path('videos/create/', VideoCreateView.as_view(), name='video-create'),
+    path('videos/upload/', VideoChunkedUploadView.as_view(), name='video-upload'),
     path('tags/create/', TagCreateView.as_view(), name='tags-create'),
     path('videos/<int:video_id>/update/', VideoUpdateView.as_view(), name='video-update'),
     path('videos/<int:video_id>/delete/', VideoDeleteView.as_view(), name='video-delete'),
     path('videos/search/', VideoSearchView.as_view(), name='video-search'),
 
-    path('playlists/', PlaylistListView.as_view(), name='playlist-list'),
-    path('playlists/<int:playlist_id>/', PlaylistDetailView.as_view(), name='playlist-detail'),
-    path('playlists/create/', PlaylistCreateView.as_view(), name='playlist-create'),
-    path('playlists/<int:playlist_id>/update/', PlaylistUpdateView.as_view(), name='playlist-update'),
-    path('playlists/<int:playlist_id>/delete/', PlaylistDeleteView.as_view(), name='playlist-delete'),
+    path('chaines/', ChaineListView.as_view(), name='chaine-list'),
+    path('chaines/<int:chaine_id>/', ChaineDetailView.as_view(), name='chaine-detail'),
+    path('chaines/create/', ChaineCreateView.as_view(), name='chaine-create'),
+    path('chaines/<int:chaine_id>/update/', ChaineUpdateView.as_view(), name='chaine-update'),
+    path('chaines/<int:chaine_id>/delete/', ChaineDeleteView.as_view(), name='chaine-delete'),
 
     path('videos/<int:video_id>/comments/', CommentListView.as_view(), name='comment-list'),
     path('videos/<int:video_id>/comments/create/', CommentCreateView.as_view(), name='comment-create'),

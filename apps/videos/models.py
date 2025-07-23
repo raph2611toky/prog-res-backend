@@ -11,7 +11,7 @@ class Tag(models.Model):
         db_table = "tag"
         
 
-class Playlist(models.Model):
+class Chaine(models.Model):
     titre = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     visibilite = models.CharField(max_length=200, choices=[(x,x)for x in ['PUBLIC', 'PRIVATE']], default='PUBLIC')
@@ -22,7 +22,7 @@ class Playlist(models.Model):
         return self.titre
     
     class Meta:
-        db_table = "playlist"
+        db_table = "chaine"
 
 class Video(models.Model):
     titre = models.CharField(max_length=200)
@@ -31,7 +31,7 @@ class Video(models.Model):
     affichage = models.ImageField(upload_to="videos/affichages/", null=True, blank=True)
     envoyeur = models.ForeignKey(User, on_delete=models.CASCADE, related_name="videos_envoyees")
     
-    dans_un_playlist = models.BooleanField(default=False)
+    dans_un_chaine = models.BooleanField(default=False)
     
     categorie = models.CharField(max_length=200, blank=True, null=True)
     tags = models.ManyToManyField(Tag, related_name="videos")
@@ -52,13 +52,13 @@ class Video(models.Model):
     class Meta:
         db_table = "video"
         
-class VideoPlaylist(models.Model):
-    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name='videos_playlist')
-    video = models.OneToOneField(Video, on_delete=models.CASCADE,related_name="videos_playlist")
+class VideoChaine(models.Model):
+    chaine = models.ForeignKey(Chaine, on_delete=models.CASCADE, related_name='videos_chaine')
+    video = models.OneToOneField(Video, on_delete=models.CASCADE,related_name="videos_chaine")
     ordre = models.IntegerField(default=0)
     
     class Meta:
-        db_table = "videoplaylist"
+        db_table = "videochaine"
 
 class Commentaire(models.Model):
     video = models.ForeignKey(Video,on_delete=models.CASCADE, related_name="commentaires")

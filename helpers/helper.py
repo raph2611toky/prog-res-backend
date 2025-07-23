@@ -10,11 +10,12 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from base64 import b64decode,b64encode
 from cryptography.hazmat.backends import default_backend
 from difflib import SequenceMatcher
+from moviepy.editor import VideoFileClip
 
 from apps.users.models import User
 
 import os, jwt, logging
-import random, re
+import random, re, traceback
 from helpers.constantes import *
 load_dotenv()
 LOGGER = logging.getLogger(__name__)
@@ -86,3 +87,49 @@ def calcule_de_similarite_de_phrase(text1, text2):
         total_similarity += best_similarity
     final_score = total_similarity / len(words1)
     return final_score
+
+def get_video_info(file_path):
+    try:
+        clip = VideoFileClip(file_path)
+        height = clip.h
+        standard_qualities = {
+            2160: "2160p (4K)",
+            1440: "1440p (2K)",
+            1080: "1080p (Full HD)",
+            720: "720p (HD)",
+            480: "480p",
+            360: "360p",
+            240: "240p"
+        }
+        quality = next((q for h, q in standard_qualities.items() if height >= h - 10), f"{height}p")
+        info = {
+            'size': os.path.getsize(file_path),
+            'duration': clip.duration,
+            'width': clip.w,
+            'height': height,
+            'fps': clip.fps,
+            'quality': quality
+        }
+        clip.close()
+        return info
+    except Exception as e:
+        raise Exception(str(e)+str(traceback.format_exc()))
+    
+def format_file_size(size_bytes):
+    if size_bytes == 0:
+        return "0 octets"
+    units = ["octets", "Ko", "Mo", "Go", "To"]
+    unit_index = 0
+    size = float(size_bytes)
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    return f"{size:.2f} {units[unit_index]}"
+
+def format_duration(seconds):
+    if seconds <= 0:
+        return "00:00:00"
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"

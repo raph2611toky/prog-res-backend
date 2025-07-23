@@ -31,6 +31,9 @@ THIRD_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'drf_yasg',
     'django_extensions',
+    'channels',
+    'chunked_upload',
+    'daphne'
 ]
 
 INSTALLED_APPS = [
@@ -74,7 +77,14 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+# WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    },
+}
 
 DATABASES = {
     'default': {
