@@ -2,20 +2,52 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+
 from apps.videos.models import Video, Chaine, VideoChaine, Commentaire, Message, Tag, VideoVue, VideoLike, VideoDislike, VideoRegarderPlusTard
 from apps.videos.serializers import VideoSerializer, ChaineSerializer, CommentaireSerializer, MessageSerializer, TagSerializer
+from apps.videos.tasks import process_video_conversion
+
 from drf_yasg.utils import swagger_auto_schema
 from chunked_upload.views import ChunkedUploadView
 from chunked_upload.models import ChunkedUpload
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from drf_yasg import openapi
+from datetime import datetime
+
+from helpers.helper import LOGGER, get_token_from_request, get_user
+
 from django.db.models import Count
 from django.db.models import Max
-from django.utils import timezone
-from datetime import timedelta
+from django.utils import timezone as django_timezone
+from django.views.decorators.csrf import csrf_exempt
 
+from datetime import timedelta, timezone
 import uuid, time
+from queue import Queue
+from threading import Thread
+
+################################# WORKER #################################
+
+
+video_conversion_queue = Queue()
+
+def video_conversion_worker():
+    while True:
+        video_id = video_conversion_queue.get()
+        print("[!] 🎊 [!] 🎊 Video conversion", video_id)
+        try:
+            print("[!] 🎊 Worker traite vidéo ID: %s", video_id)
+            process_video_conversion(video_id)
+        except Exception as e:
+            print("[❌] Erreur dans le worker pour vidéo ID: %s - %s", video_id, str(e))
+        finally:
+            video_conversion_queue.task_done()
+
+worker_thread = Thread(target=video_conversion_worker, daemon=True)
+worker_thread.start()
+
+################################# WORKER #################################
 
 class TagCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -86,7 +118,7 @@ class VideoListView(APIView):
             videos = videos.filter(categorie=categorie)
 
         date_filter = request.query_params.get('date_filter')
-        now = timezone.now()
+        now = django_timezone.now()
         if date_filter == 'today':
             videos = videos.filter(uploaded_at__date=now.date())
         elif date_filter == 'week':
@@ -176,19 +208,28 @@ class VideoCreateView(APIView):
             if fichier:
                 video.fichier = fichier
             video.save()
+            video_conversion_queue.put(video.id)
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
 
 class VideoChunkedUploadView(ChunkedUploadView):
     model = ChunkedUpload
     field_name = 'fichier'
-    permission_classes = [IsAuthenticated]
 
-    def get_extra_attrs(self):
+    def post(self, request, *args, **kwargs):
+        request.user = get_user(get_token_from_request(request))
+        return super().post(request, *args, **kwargs)
+
+    @csrf_exempt
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+    def get_extra_attrs_plus(self):
+        if not hasattr(self, '_upload_id'):
+            self._upload_id = str(uuid.uuid4())
         return {
             'user': self.request.user,
-            'upload_id': str(uuid.uuid4()),
-            'start_time': time.time(),
+            'upload_id': self._upload_id,
         }
 
     def on_completion(self, uploaded_file, request):
@@ -202,7 +243,7 @@ class VideoChunkedUploadView(ChunkedUploadView):
             video = serializer.save()
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
-                f"upload_{request.user.id}_{self.get_extra_attrs()['upload_id']}",
+                f"upload_{request.user.id}_{self.get_extra_attrs_plus()['upload_id']}",
                 {
                     'type': 'upload_progress',
                     'progress': 100,
@@ -218,13 +259,16 @@ class VideoChunkedUploadView(ChunkedUploadView):
         return Response(serializer.errors, status=400)
 
     def get_response_data(self, chunked_upload, request):
+        start_time = chunked_upload.start_time
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        elapsed_time = (now - start_time).total_seconds()
         progress = (chunked_upload.offset / chunked_upload.file.size) * 100
-        elapsed_time = time.time() - chunked_upload.start_time
         speed = chunked_upload.offset / elapsed_time if elapsed_time > 0 else 0
         total_duration = chunked_upload.file.size / speed if speed > 0 else 0
         remaining_duration = total_duration * (1 - progress / 100)
         remaining_size = chunked_upload.file.size - chunked_upload.offset
-
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
             f"upload_{request.user.id}_{chunked_upload.upload_id}",
@@ -620,7 +664,7 @@ class VideoSearchView(APIView):
             videos = videos.filter(categorie=categorie)
 
         date_filter = request.query_params.get('date_filter')
-        now = timezone.now()
+        now = django_timezone.now()
         if date_filter == 'today':
             videos = videos.filter(uploaded_at__date=now.date())
         elif date_filter == 'week':

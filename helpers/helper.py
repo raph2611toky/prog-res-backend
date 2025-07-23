@@ -12,11 +12,13 @@ from cryptography.hazmat.backends import default_backend
 from difflib import SequenceMatcher
 from moviepy.editor import VideoFileClip
 
-from apps.users.models import User
+from apps.users.models import User, default_created_at
 
 import os, jwt, logging
 import random, re, traceback
 from helpers.constantes import *
+import ffmpeg
+
 load_dotenv()
 LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +33,6 @@ def get_timezone():
     if '-' in tz:
         return django_timezone.now() - timedelta(hours=int(tz.strip()[1:]))
     return django_timezone.now()+timedelta(hours=int(tz))
-
 
 def enc_dec(plaintext, type='e'):
     cipher = Cipher(algorithms.AES(os.getenv('AES_KEY').encode()), modes.CFB(os.getenv('AES_IV').encode()), backend=default_backend())
@@ -56,15 +57,24 @@ def generate_jwt_token(payload: dict, expires_in_minutes: int = 1440) -> str:
 def decode_jwt_token(token: str) -> dict:
     return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.SIMPLE_JWT['ALGORITHM']])
 
-
 def get_user(token):
+    if not token:
+        LOGGER.error("Aucun token fourni")
+        return None
     try:
         access_token = AccessToken(token)
-        if "user_id" in access_token:
-            user_id = access_token['user_id']
-            return User.objects.get(id=user_id)
+        user_id = access_token.get('user_id')
+        if not user_id:
+            LOGGER.error("Le token ne contient pas 'user_id'")
+            return None
+        user = User.objects.get(id=user_id)
+        LOGGER.info(f"Utilisateur récupéré : {user}")
+        return user
+    except TokenError as e:
+        LOGGER.error(f"Token invalide : {e}")
         return None
-    except (TokenError, User.DoesNotExist):
+    except User.DoesNotExist:
+        LOGGER.error(f"Utilisateur avec id {user_id} n'existe pas")
         return None
 
 def calcule_de_similarite_de_phrase(text1, text2):
@@ -133,3 +143,158 @@ def format_duration(seconds):
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+def get_available_info(file_path):
+    try:
+        clip = VideoFileClip(file_path)
+        height = clip.h
+        
+        standard_qualities = [
+            (2160, "2160p (4K)"),
+            (1440, "1440p (2K)"),
+            (1080, "1080p (Full HD)"),
+            (720, "720p (HD)"),
+            (480, "480p"),
+            (360, "360p"),
+            (240, "240p"),
+            (144, "144p")
+        ]
+        
+        available_qualities = [quality for threshold, quality in standard_qualities if height >= threshold]
+        quality = next((q for h, q in {
+            2160: "2160p (4K)",
+            1440: "1440p (2K)",
+            1080: "1080p (Full HD)",
+            720: "720p (HD)",
+            480: "480p",
+            360: "360p",
+            240: "240p"
+        }.items() if height >= h - 10), f"{height}p")
+        probe = ffmpeg.probe(file_path)
+        video_info = {
+            'qualities': available_qualities,
+            'size': os.path.getsize(file_path),
+            'size_formatted': format_file_size(os.path.getsize(file_path)),
+            'duration': clip.duration,
+            'duration_formatted': format_duration(clip.duration),
+            'width': clip.w,
+            'height': clip.h,
+            'fps': clip.fps,
+            'has_subtitles': False,
+            'subtitle_languages': [],
+            'audio_tracks': [],
+            'has_multiple_languages': False,
+            'quality': quality
+        }
+        
+        subtitle_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'subtitle']
+        if subtitle_streams:
+            video_info['has_subtitles'] = True
+            video_info['subtitle_languages'] = [
+                stream.get('tags', {}).get('language', 'unknown') for stream in subtitle_streams
+            ]
+        
+        audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+        audio_languages = [stream.get('tags', {}).get('language', 'unknown') for stream in audio_streams]
+        video_info['audio_tracks'] = audio_languages
+        video_info['has_multiple_languages'] = len(set(audio_languages)) > 1
+        
+        clip.close()
+        return video_info
+    
+    except Exception as e:
+        if 'clip' in locals():
+            clip.close()
+        raise Exception(f"Erreur lors de l'obtention des informations vidéo: {str(e)}")
+
+def convert_video_quality(file_path, target_quality):
+    try:
+        clip = VideoFileClip(file_path)
+        
+        quality_heights = {
+            "2160p": 2160,
+            "1440p": 1440,
+            "1080p": 1080,
+            "720p": 720,
+            "480p": 480,
+            "360p": 360,
+            "240p": 240,
+            "144p": 144
+        }
+        
+        target_height = None
+        for quality, height in quality_heights.items():
+            if target_quality.startswith(quality):
+                target_height = height
+                break
+                
+        if not target_height:
+            clip.close()
+            raise ValueError(f"Qualité cible '{target_quality}' non supportée")
+            
+        if clip.h < target_height:
+            clip.close()
+            raise ValueError(f"La vidéo source ({clip.h}p) est de qualité inférieure à la qualité cible ({target_quality})")
+        
+        aspect_ratio = clip.w / clip.h
+        target_width = int(target_height * aspect_ratio)
+        target_width = target_width if target_width % 2 == 0 else target_width + 1
+        
+        file_name, file_ext = os.path.splitext(file_path)
+        output_path = f"{file_name}_{target_quality}{file_ext}"
+        
+        resized_clip = clip.resize(height=target_height, width=target_width)
+        
+        resized_clip.write_videofile(
+            output_path,
+            codec='libx264',
+            audio_codec='aac',
+            temp_audiofile='temp-audio.m4a',
+            remove_temp=True,
+            threads=4
+        )
+        
+        clip.close()
+        resized_clip.close()
+        
+        return output_path
+    
+    except Exception as e:
+        if 'clip' in locals():
+            clip.close()
+        if 'resized_clip' in locals():
+            resized_clip.close()
+        raise Exception(f"Erreur lors de la conversion de la vidéo: {str(e)}")
+
+def format_views(views):
+    if views >= 1000000:
+        return f"{views / 1000000:.1f}M"
+    elif views >= 1000:
+        return f"{views / 1000:.1f}K"
+    else:
+        return str(views)
+
+def format_elapsed_time(uploaded_at):
+    now = default_created_at()
+    delta = now - uploaded_at
+
+    if delta.total_seconds() < 60:
+        seconds = int(delta.total_seconds())
+        return "maintenant" if seconds < 10 else f"{seconds} s"
+    elif delta.total_seconds() < 3600:
+        minutes = int(delta.total_seconds() / 60)
+        return f"{minutes} min"
+    elif delta.total_seconds() < 86400:
+        hours = int(delta.total_seconds() / 3600)
+        return f"{hours} h"
+    elif uploaded_at.date() == now.date():
+        return "aujourd'hui"
+    elif (now - uploaded_at).days <= 7:
+        return "cette semaine"
+    elif uploaded_at.month == now.month and uploaded_at.year == now.year:
+        return "ce mois"
+    elif uploaded_at.year == now.year:
+        return "cette année"
+    else:
+        years = now.year - uploaded_at.year
+        return f"{years} ans"

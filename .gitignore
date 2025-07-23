@@ -20,3 +20,5 @@ __pycache__/
 *.log
 helpers/services/google/client_secret.json
 .env
+
+media/

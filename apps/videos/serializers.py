@@ -3,7 +3,7 @@ from .models import Tag, Video, Chaine, Commentaire, Message, VideoChaine
 from apps.users.serializers import UserSerializer
 from django.utils.text import slugify
 from django.conf import settings
-from helpers.helper import calcule_de_similarite_de_phrase, get_video_info, format_file_size, format_duration
+from helpers.helper import calcule_de_similarite_de_phrase, get_available_info, format_file_size, format_duration, format_views, format_elapsed_time
 from django.db.models import Count
 from django.db.models import Max
 
@@ -78,6 +78,39 @@ class VideoChaineSerializer(serializers.ModelSerializer):
         model = VideoChaine
         fields = ['id', 'chaine', 'video', 'ordre']
 
+class SuggestedVideoSerializer(serializers.ModelSerializer):
+    envoyeur = UserSerializer(read_only=True)
+    tags = TagSerializer(many=True, read_only=True)
+    likes_count = serializers.SerializerMethodField()
+    dislikes_count = serializers.SerializerMethodField()
+    vues_count = serializers.SerializerMethodField()
+    fichier_url = serializers.SerializerMethodField()
+    affichage_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Video
+        fields = [
+            'id', 'titre', 'description', 'fichier_url', 'affichage_url', 'envoyeur',
+            'dans_un_chaine', 'categorie', 'tags', 'visibilite',
+            'autoriser_commentaire', 'ordre_de_commentaire', 'likes_count', 'dislikes_count',
+            'vues_count', 'uploaded_at', 'updated_at'
+        ]
+
+    def get_fichier_url(self, obj):
+        return f"{settings.BASE_URL}{obj.fichier.url}" if obj.fichier else None
+
+    def get_affichage_url(self, obj):
+        return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
+
+    def get_likes_count(self, obj):
+        return obj.likes.count()
+
+    def get_dislikes_count(self, obj):
+        return obj.dislikes.count()
+
+    def get_vues_count(self, obj):
+        return obj.vues.count()
+
 class VideoSerializer(serializers.ModelSerializer):
     envoyeur = UserSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
@@ -102,7 +135,6 @@ class VideoSerializer(serializers.ModelSerializer):
             'vues_count', 'uploaded_at', 'updated_at', 'suggested_videos'
         ]
         
-    
     def get_fichier_url(self, obj):
         return f"{settings.BASE_URL}{obj.fichier.url}" if obj.fichier else None
     
@@ -149,8 +181,8 @@ class VideoSerializer(serializers.ModelSerializer):
         category_related = Video.objects.filter(categorie=obj.categorie).exclude(id=obj.id)[:3]
         suggested.extend(category_related)
 
-        suggested = list(dict.fromkeys(suggested))[:5]
-        return VideoSerializer(suggested, many=True, context=self.context).data
+        suggested = list(dict.fromkeys(suggested))[:25]
+        return SuggestedVideoSerializer(suggested, many=True, context=self.context).data
 
     def create(self, validated_data):
         tag_ids = validated_data.pop('tag_ids', None)
@@ -208,14 +240,18 @@ class VideoSerializer(serializers.ModelSerializer):
             representation["commentaires"] = CommentaireSerializer(commentaires, many=True).data
         if instance.fichier:
             video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
-            video_info = get_video_info(video_path)
+            video_info = get_available_info(video_path)
             if video_info and 'error' not in video_info:
                 representation["taille"] = format_file_size(video_info.get('size', 0))
                 representation["duration"] = format_duration(video_info.get('duration', 0))
                 representation["largeur"] = f"{video_info.get('width', 0)}"
                 representation["hauteur"] = f"{video_info.get('height', 0)}"
                 representation["qualite"] = video_info.get('quality', 'N/A')
+                representation["qualites_disponibles"] = video_info.get('qualities', 'N/A')
                 representation["fps"] = f"{video_info.get('fps', 0)} images/s"
+        
+        representation['vues_formatted'] = format_views(representation['vues_count'])
+        representation['elapsed_time'] = format_elapsed_time(instance.uploaded_at)
         return representation
 
 class ChaineSerializer(serializers.ModelSerializer):
