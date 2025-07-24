@@ -21,7 +21,8 @@ ALLOWED_HOSTS = [IP_ADDR, '127.0.0.1', 'localhost']
 
 LOCAL_APPS = [
     'apps.users.apps.UsersConfig',
-    'apps.videos.apps.VideosConfig'
+    'apps.videos.apps.VideosConfig',
+    'apps.streaming.apps.StreamingConfig',
 ]
 
 THIRD_APPS = [
