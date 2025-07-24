@@ -44,6 +44,9 @@ class Video(models.Model):
     dislikes = models.ManyToManyField(User, related_name="videos_disliked")
     vues = models.ManyToManyField(User, related_name="videos_vues")
     
+    manifest_file = models.FileField(upload_to="videos/manifests/", null=True, blank=True)
+    segments_dir = models.CharField(max_length=255, null=True, blank=True)
+    
     uploaded_at = models.DateTimeField(default=default_created_at)
     updated_at = models.DateTimeField(default=default_created_at)
     

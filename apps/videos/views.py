@@ -5,7 +5,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 
 from apps.videos.models import Video, Chaine, VideoChaine, Commentaire, Message, Tag, VideoVue, VideoLike, VideoDislike, VideoRegarderPlusTard
 from apps.videos.serializers import VideoSerializer, ChaineSerializer, CommentaireSerializer, MessageSerializer, TagSerializer
-from apps.videos.tasks import process_video_conversion
+from apps.videos.tasks import process_video_conversion, generate_video_affichage
 
 from drf_yasg.utils import swagger_auto_schema
 from chunked_upload.views import ChunkedUploadView
@@ -20,10 +20,11 @@ from helpers.helper import LOGGER, get_token_from_request, get_user
 from django.db.models import Count
 from django.db.models import Max
 from django.utils import timezone as django_timezone
+from django.http import FileResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from datetime import timedelta, timezone
-import uuid, time
+import uuid, time, os
 from queue import Queue
 from threading import Thread
 
@@ -31,6 +32,7 @@ from threading import Thread
 
 
 video_conversion_queue = Queue()
+video_affichage_queue = Queue()
 
 def video_conversion_worker():
     while True:
@@ -43,9 +45,23 @@ def video_conversion_worker():
             print("[❌] Erreur dans le worker pour vidéo ID: %s - %s", video_id, str(e))
         finally:
             video_conversion_queue.task_done()
+            
+def video_affichage_worker():
+    while True:
+        video_id = video_affichage_queue.get()
+        print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
+        try:
+            generate_video_affichage(video_id)
+        except Exception as e:
+            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
+        finally:
+            video_affichage_queue.task_done()
 
 worker_thread = Thread(target=video_conversion_worker, daemon=True)
 worker_thread.start()
+
+affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+affichage_worker_thread.start()
 
 ################################# WORKER #################################
 
@@ -145,7 +161,7 @@ class VideoListView(APIView):
         elif order_by == 'date':
             videos = videos.order_by('-uploaded_at')
 
-        serializer = VideoSerializer(videos, many=True, context={'request': request})
+        serializer = VideoSerializer(videos, many=True, context={'request': request, "with_suggestion":False})
         return Response(serializer.data)
 
 class VideoDetailView(APIView):
@@ -209,6 +225,8 @@ class VideoCreateView(APIView):
                 video.fichier = fichier
             video.save()
             video_conversion_queue.put(video.id)
+            video_affichage_queue.put(video.id)
+            
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
 
@@ -857,3 +875,51 @@ class SubscribedChainesView(APIView):
             return Response(serializer.data, status=200)
         except Exception as e:
             return Response({"erreur": str(e)}, status=500)
+
+class VideoManifestView(APIView):
+    @swagger_auto_schema(
+        operation_description="Récupère le fichier manifeste HLS (.m3u8) pour une vidéo spécifique",
+        tags=["Streaming"],
+        responses={
+            200: openapi.Response(
+                description="Fichier manifeste HLS",
+                content={'application/vnd.apple.mpegurl': {}}
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            return FileResponse(open(video.master_manifest_file.path, 'rb'), content_type='application/vnd.apple.mpegurl')
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class VideoSegmentView(APIView):
+    @swagger_auto_schema(
+        operation_description="Récupère un segment vidéo spécifique (.ts) pour une vidéo",
+        tags=["Streaming"],
+        responses={
+            200: openapi.Response(
+                description="Segment vidéo",
+                content={'video/mp4': {}}
+            ),
+            404: openapi.Response(
+                description="Segment ou vidéo non trouvé",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, video_id, segment_name):
+        try:
+            video = Video.objects.get(id=video_id)
+            segment_path = os.path.join(video.segments_dir, segment_name)
+            if os.path.exists(segment_path):
+                return FileResponse(open(segment_path, 'rb'), content_type='video/mp4')
+            else:
+                return Response({'error': 'Segment non trouvé'}, status=404)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)

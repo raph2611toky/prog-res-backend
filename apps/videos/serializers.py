@@ -2,10 +2,13 @@ from rest_framework import serializers
 from .models import Tag, Video, Chaine, Commentaire, Message, VideoChaine
 from apps.users.serializers import UserSerializer
 from django.utils.text import slugify
+from apps.streaming.models import VideoWatch
+from apps.streaming.serializers import VideoWatchSerializer
 from django.conf import settings
 from helpers.helper import calcule_de_similarite_de_phrase, get_available_info, format_file_size, format_duration, format_views, format_elapsed_time
 from django.db.models import Count
 from django.db.models import Max
+from django.contrib.auth.models import AnonymousUser
 
 import os
 
@@ -226,11 +229,18 @@ class VideoSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         request = self.context.get("request", None)
-        if request is not None:
+        with_suggestion = self.context.get("with_suggestion",True)
+        if request is not None and not isinstance(request.user, AnonymousUser):
             user = request.user
             representation['is_liked_by_me'] = user.id in [u.id for u in instance.likes.all()]
             representation['is_disliked_by_me'] = user.id in [u.id for u in instance.dislikes.all()]
             representation['is_view_by_me'] = user.id in [u.id for u in instance.vues.all()]
+            try:
+                watch = VideoWatch.objects.get(video=instance, user=user)
+                representation["my_watch_video"] = VideoWatchSerializer(watch).data
+            except VideoWatch.DoesNotExist:
+                pass
+        
         if instance.autoriser_commentaire:
             commentaires = instance.commentaires.all()
             if instance.ordre_de_commentaire == 'TOP':
@@ -249,6 +259,8 @@ class VideoSerializer(serializers.ModelSerializer):
                 representation["qualite"] = video_info.get('quality', 'N/A')
                 representation["qualites_disponibles"] = video_info.get('qualities', 'N/A')
                 representation["fps"] = f"{video_info.get('fps', 0)} images/s"
+        if not with_suggestion:
+            representation.pop("suggested_videos",None)
         
         representation['vues_formatted'] = format_views(representation['vues_count'])
         representation['elapsed_time'] = format_elapsed_time(instance.uploaded_at)

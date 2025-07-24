@@ -298,3 +298,16 @@ def format_elapsed_time(uploaded_at):
     else:
         years = now.year - uploaded_at.year
         return f"{years} ans"
+
+def extract_random_frame(video_path, output_dir):
+    try:
+        clip = VideoFileClip(video_path)
+        duration = clip.duration
+        random_time = random.uniform(0, duration) 
+        output_path = os.path.join(output_dir, f"affichage_{os.path.basename(video_path).split('.')[0]}.jpg")
+        clip.save_frame(output_path, t=random_time)
+        clip.close()
+        return output_path
+    except Exception as e:
+        print(f"Erreur lors de l'extraction de l'image : {e}")
+        return None

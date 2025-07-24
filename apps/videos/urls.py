@@ -4,7 +4,7 @@ from apps.videos.views import (
     ChaineListView, ChaineDetailView, ChaineCreateView, ChaineUpdateView, ChaineDeleteView,
     CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView, VideoChunkedUploadView,
     LikedVideosView, SubscribedChainesView, HistoriqueVuesView, DislikedVideosView, RegarderPlusTardListView,
-    RegarderPlusTardMarquerView,
+    RegarderPlusTardMarquerView, VideoManifestView, VideoSegmentView
 )
 
 urlpatterns = [
@@ -35,4 +35,7 @@ urlpatterns = [
     path('videos/regarder-plus-tard/list/', RegarderPlusTardListView.as_view(), name='regarder-plus-tard-list'),
     path('videos/regarder-plus-tard/marquer/', RegarderPlusTardMarquerView.as_view(), name='marquer-un-video-a-regarder-plus-tard'),
     path('chaines/subscribed/', SubscribedChainesView.as_view(), name='subscribed-chaines'),
+    
+    path('videos/<int:video_id>/manifest.m3u8', VideoManifestView.as_view(), name='video_manifest'),
+    path('videos/<int:video_id>/segments/<str:segment_name>', VideoSegmentView.as_view(), name='video_segment'),
 ]
