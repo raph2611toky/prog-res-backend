@@ -5,12 +5,13 @@ from apps.videos.views import (
     CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView, VideoChunkedUploadView,
     LikedVideosView, SubscribedChainesView, HistoriqueVuesView, DislikedVideosView, RegarderPlusTardListView,
     RegarderPlusTardMarquerView, VideoManifestView, VideoSegmentView,VideoLikeView, VideoDislikeView, ChaineSubscribeView,
-    VideoViewView,VideoDownloadView
+    VideoViewView,VideoDownloadView, VideoDetailByCodeIdView
 )
 
 urlpatterns = [
     path('videos/', VideoListView.as_view(), name='video-list'),
     path('videos/<int:video_id>/', VideoDetailView.as_view(), name='video-detail'),
+    path('videos/<uuid:code_id>/details/', VideoDetailByCodeIdView.as_view(), name='video-detail'),
     path('videos/create/', VideoCreateView.as_view(), name='video-create'),
     path('videos/upload/', VideoChunkedUploadView.as_view(), name='video-upload'),
     path('tags/create/', TagCreateView.as_view(), name='tags-create'),

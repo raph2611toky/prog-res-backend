@@ -1,5 +1,6 @@
 from django.db import models
 from apps.users.models import User, default_created_at
+import uuid
 
 class Tag(models.Model):
     name = models.CharField(max_length=255)
@@ -26,6 +27,7 @@ class Chaine(models.Model):
         db_table = "chaine"
 
 class Video(models.Model):
+    code_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     titre = models.CharField(max_length=200)
     description = models.TextField()
     fichier = models.FileField(upload_to="videos/")

@@ -121,7 +121,7 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
             'id', 'titre', 'description', 'fichier_url', 'affichage_url', 'envoyeur',
             'dans_un_chaine', 'categorie', 'tags', 'visibilite',
             'autoriser_commentaire', 'ordre_de_commentaire', 'likes_count', 'dislikes_count',
-            'vues_count', 'uploaded_at', 'updated_at'
+            'vues_count', 'uploaded_at', 'updated_at', 'code_id'
         ]
 
     def get_fichier_url(self, obj):
@@ -190,7 +190,7 @@ class VideoSerializer(serializers.ModelSerializer):
             'id', 'titre', 'description', 'fichier_url', 'affichage_url', 'envoyeur',
             'dans_un_chaine', 'categorie', 'tags', 'tag_ids', 'chaine_id', 'chaine', 'visibilite',
             'autoriser_commentaire', 'ordre_de_commentaire', 'likes_count', 'dislikes_count',
-            'vues_count', 'uploaded_at', 'updated_at', 'suggested_videos'
+            'vues_count', 'uploaded_at', 'updated_at', 'suggested_videos','code_id'
         ]
         
     def get_fichier_url(self, obj):

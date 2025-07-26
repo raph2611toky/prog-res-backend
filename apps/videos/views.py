@@ -173,6 +173,27 @@ class VideoDetailView(APIView):
             return Response(serializer.data)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
+        
+class VideoDetailByCodeIdView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Récupère les détails d'une vidéo spécifique",
+        responses={
+            200: VideoSerializer(),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, code_id):
+        try:
+            video = Video.objects.get(code_id=code_id)
+            serializer = VideoSerializer(video, context={'request': request})
+            return Response(serializer.data)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
 
 class VideoCreateView(APIView):
     permission_classes = [IsAuthenticated]
