@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Tag, Video, Chaine, Commentaire, Message, VideoChaine
+from .models import Tag, Video, Chaine, Commentaire, Message, Playlist, VideoPlaylist
 from apps.users.serializers import UserSerializer
 from django.utils.text import slugify
 from apps.streaming.models import VideoWatch
@@ -11,7 +11,6 @@ from helpers.helper import (
 )
 from apps.videos.tasks import generate_video_affichage
 from django.db.models import Count
-from django.db.models import Max
 from django.contrib.auth.models import AnonymousUser
 from queue import Queue
 from threading import Thread
@@ -98,13 +97,67 @@ class CommentaireSerializer(serializers.ModelSerializer):
         
         return commentaire
 
-class VideoChaineSerializer(serializers.ModelSerializer):
+class VideoPlaylistSerializer(serializers.ModelSerializer):
     video = serializers.PrimaryKeyRelatedField(queryset=Video.objects.all())
-    chaine = serializers.PrimaryKeyRelatedField(queryset=Chaine.objects.all())
+    playlist = serializers.PrimaryKeyRelatedField(queryset=Playlist.objects.all())
 
     class Meta:
-        model = VideoChaine
-        fields = ['id', 'chaine', 'video', 'ordre']
+        model = VideoPlaylist
+        fields = ['id', 'playlist', 'video', 'ordre']
+
+class PlaylistSerializer(serializers.ModelSerializer):
+    videos = serializers.SerializerMethodField()
+    video_ids = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, required=False
+    )
+
+    class Meta:
+        model = Playlist
+        fields = ['id', 'titre', 'chaine', 'user', 'videos', 'video_ids', 'created_at']
+        read_only_fields = ['id', 'created_at', 'videos']
+
+    def validate(self, data):
+        video_ids = data.get('video_ids', [])
+        titre = data.get('titre', '')
+        chaine = data.get('chaine')
+        user = data.get('user')
+        
+        if not titre and not video_ids:
+            raise serializers.ValidationError("Le titre et la liste des vidéos ne peuvent pas être vides simultanément.")
+        if (chaine is None and user is None) or (chaine is not None and user is not None):
+            raise serializers.ValidationError("Une playlist doit être associée à une chaîne ou un utilisateur, mais pas aux deux.")
+        return data
+
+    def get_videos(self, obj):
+        video_playlists = VideoPlaylist.objects.filter(playlist=obj).order_by('ordre')
+        return VideoSerializer([vp.video for vp in video_playlists], many=True, context=self.context).data
+
+    def create(self, validated_data):
+        video_ids = validated_data.pop('video_ids', [])
+        if not validated_data.get('user') and self.context['request'].user.is_authenticated:
+            validated_data['user'] = self.context['request'].user
+        playlist = Playlist.objects.create(**validated_data)
+        
+        for index, video_id in enumerate(video_ids):
+            video = Video.objects.get(id=video_id)
+            VideoPlaylist.objects.create(playlist=playlist, video=video, ordre=index + 1)
+        
+        return playlist
+
+    def update(self, instance, validated_data):
+        video_ids = validated_data.pop('video_ids', None)
+        
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if video_ids is not None:
+            VideoPlaylist.objects.filter(playlist=instance).delete()
+            for index, video_id in enumerate(video_ids):
+                video = Video.objects.get(id=video_id)
+                VideoPlaylist.objects.create(playlist=instance, video=video, ordre=index + 1)
+        
+        return instance
 
 class SuggestedVideoSerializer(serializers.ModelSerializer):
     envoyeur = UserSerializer(read_only=True)
@@ -119,7 +172,7 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
         model = Video
         fields = [
             'id', 'titre', 'description', 'fichier_url', 'affichage_url', 'envoyeur',
-            'dans_un_chaine', 'categorie', 'tags', 'visibilite',
+            'categorie', 'tags', 'visibilite',
             'autoriser_commentaire', 'ordre_de_commentaire', 'likes_count', 'dislikes_count',
             'vues_count', 'uploaded_at', 'updated_at', 'code_id'
         ]
@@ -175,8 +228,6 @@ class VideoSerializer(serializers.ModelSerializer):
     tag_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True, required=False
     )
-    chaine_id = serializers.IntegerField(write_only=True, required=False)
-    chaine = serializers.SerializerMethodField()
     likes_count = serializers.SerializerMethodField()
     dislikes_count = serializers.SerializerMethodField()
     vues_count = serializers.SerializerMethodField()
@@ -188,9 +239,9 @@ class VideoSerializer(serializers.ModelSerializer):
         model = Video
         fields = [
             'id', 'titre', 'description', 'fichier_url', 'affichage_url', 'envoyeur',
-            'dans_un_chaine', 'categorie', 'tags', 'tag_ids', 'chaine_id', 'chaine', 'visibilite',
+            'categorie', 'tags', 'tag_ids', 'visibilite',
             'autoriser_commentaire', 'ordre_de_commentaire', 'likes_count', 'dislikes_count',
-            'vues_count', 'uploaded_at', 'updated_at', 'suggested_videos','code_id'
+            'vues_count', 'uploaded_at', 'updated_at', 'suggested_videos', 'code_id'
         ]
         
     def get_fichier_url(self, obj):
@@ -210,20 +261,14 @@ class VideoSerializer(serializers.ModelSerializer):
     def get_vues_count(self, obj):
         return obj.vues.count()
 
-    def get_chaine(self, obj):
-        if obj.dans_un_chaine and hasattr(obj, 'videos_chaine'):
-            video_chaine = obj.videos_chaine
-            return ChaineSerializer(video_chaine.chaine).data
-        return None
-
     def get_suggested_videos(self, obj):
         suggested = []
         
-        if obj.dans_un_chaine and hasattr(obj, 'videos_chaine'):
-            video_chaine = obj.videos_chaine
-            chaine = video_chaine.chaine
-            next_videos = VideoChaine.objects.filter(
-                chaine=chaine, ordre__gt=video_chaine.ordre
+        # Suggest videos from the same playlist
+        playlists = Playlist.objects.filter(videos_playlist__video=obj)
+        for playlist in playlists:
+            next_videos = VideoPlaylist.objects.filter(
+                playlist=playlist, ordre__gt=VideoPlaylist.objects.get(playlist=playlist, video=obj).ordre
             ).order_by('ordre')[:3]
             suggested.extend([vp.video for vp in next_videos])
 
@@ -246,24 +291,16 @@ class VideoSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         tag_ids = validated_data.pop('tag_ids', None)
-        chaine_id = validated_data.pop('chaine_id', None)
         validated_data['envoyeur'] = self.context['request'].user
         video = Video.objects.create(**validated_data)
 
         if tag_ids:
             video.tags.set(tag_ids)
-        if chaine_id:
-            chaine = Chaine.objects.get(id=chaine_id)
-            max_ordre = VideoChaine.objects.filter(chaine=chaine).aggregate(Max('ordre'))['ordre__max'] or 0
-            VideoChaine.objects.create(chaine=chaine, video=video, ordre=max_ordre + 1)
-            video.dans_un_chaine = True
-            video.save()
         
         return video
 
     def update(self, instance, validated_data):
         tag_ids = validated_data.pop('tag_ids', None)
-        chaine_id = validated_data.pop('chaine_id', None)
         
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -271,22 +308,13 @@ class VideoSerializer(serializers.ModelSerializer):
 
         if tag_ids:
             instance.tags.set(tag_ids)
-        if chaine_id:
-            chaine = Chaine.objects.get(id=chaine_id)
-            if not hasattr(instance, 'videos_chaine') or instance.videos_chaine.chaine != chaine:
-                if hasattr(instance, 'videos_chaine'):
-                    instance.videos_chaine.delete()
-                max_ordre = VideoChaine.objects.filter(chaine=chaine).aggregate(Max('ordre'))['ordre__max'] or 0
-                VideoChaine.objects.create(chaine=chaine, video=instance, ordre=max_ordre + 1)
-                instance.dans_un_chaine = True
-                instance.save()
         
         return instance
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         request = self.context.get("request", None)
-        with_suggestion = self.context.get("with_suggestion",True)
+        with_suggestion = self.context.get("with_suggestion", True)
         if request is not None and not isinstance(request.user, AnonymousUser):
             user = request.user
             representation['is_liked_by_me'] = user.id in [u.id for u in instance.likes.all()]
@@ -317,55 +345,32 @@ class VideoSerializer(serializers.ModelSerializer):
                 representation["qualites_disponibles"] = video_info.get('qualities', 'N/A')
                 representation["fps"] = f"{video_info.get('fps', 0)} images/s"
         if not with_suggestion:
-            representation.pop("suggested_videos",None)
+            representation.pop("suggested_videos", None)
         
         representation['vues_formatted'] = format_views(representation['vues_count'])
         representation['elapsed_time'] = format_elapsed_time(instance.uploaded_at)
         return representation
 
 class ChaineSerializer(serializers.ModelSerializer):
-    videos = serializers.SerializerMethodField()
-    abonnees = UserSerializer(many=True)
-    video_ids = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True, required=False
-    )
+    playlists = serializers.SerializerMethodField()
 
     class Meta:
         model = Chaine
-        fields = ['id', 'titre', 'description', 'visibilite', 'videos', 'video_ids', 'abonnees', 'created_at']
+        fields = ['id', 'titre', 'description', 'playlists', 'abonnees', 'created_at']
+        read_only_fields = ['id', 'abonnees', 'created_at', 'playlists']
 
-    def get_videos(self, obj):
-        video_chaines = VideoChaine.objects.filter(chaine=obj).order_by('ordre')
-        return VideoSerializer([vp.video for vp in video_chaines], many=True, context=self.context).data
+    def get_playlists(self, obj):
+        playlists = Playlist.objects.filter(chaine=obj)
+        return PlaylistSerializer(playlists, many=True, context=self.context).data
 
     def create(self, validated_data):
-        video_ids = validated_data.pop('video_ids', None)
         chaine = Chaine.objects.create(**validated_data)
-        
-        if video_ids:
-            for index, video_id in enumerate(video_ids):
-                video = Video.objects.get(id=video_id)
-                VideoChaine.objects.create(chaine=chaine, video=video, ordre=index + 1)
-                video.dans_un_chaine = True
-                video.save()
-        
         return chaine
 
     def update(self, instance, validated_data):
-        video_ids = validated_data.pop('video_ids', None)
-        
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
-
-        if video_ids is not None:
-            VideoChaine.objects.filter(chaine=instance).delete()
-            for index, video_id in enumerate(video_ids):
-                video = Video.objects.get(id=video_id)
-                VideoChaine.objects.create(chaine=instance, video=video, ordre=index + 1)
-                video.dans_un_chaine = True
-                video.save()
-        
         return instance
     
     def to_representation(self, instance):

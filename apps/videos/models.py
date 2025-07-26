@@ -14,10 +14,7 @@ class Tag(models.Model):
 class Chaine(models.Model):
     titre = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    visibilite = models.CharField(max_length=200, choices=[(x,x) for x in ['PUBLIC', 'PRIVATE']], default='PUBLIC')
-    
     abonnees = models.ManyToManyField(User, related_name="chaines_abonnes")
-    
     created_at = models.DateTimeField(default=default_created_at)
     
     def __str__(self):
@@ -26,6 +23,27 @@ class Chaine(models.Model):
     class Meta:
         db_table = "chaine"
 
+class Playlist(models.Model):
+    titre = models.CharField(max_length=200, blank=True)
+    chaine = models.ForeignKey(Chaine, on_delete=models.CASCADE, related_name="playlists", null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="playlists", null=True, blank=True)
+    created_at = models.DateTimeField(default=default_created_at)
+    
+    def __str__(self):
+        return self.titre or f"Playlist {self.id}"
+    
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (self.chaine is None and self.user is None) or (self.chaine is not None and self.user is not None):
+            raise ValidationError("Une playlist doit être associée à une chaîne ou un utilisateur, mais pas aux deux.")
+    
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+    
+    class Meta:
+        db_table = "playlist"
+
 class Video(models.Model):
     code_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     titre = models.CharField(max_length=200)
@@ -33,8 +51,6 @@ class Video(models.Model):
     fichier = models.FileField(upload_to="videos/")
     affichage = models.ImageField(upload_to="videos/affichages/", null=True, blank=True)
     envoyeur = models.ForeignKey(User, on_delete=models.CASCADE, related_name="videos_envoyees")
-    
-    dans_un_chaine = models.BooleanField(default=False)
     
     categorie = models.CharField(max_length=200, blank=True, null=True)
     tags = models.ManyToManyField(Tag, related_name="videos")
@@ -65,7 +81,7 @@ class VideoVue(models.Model):
 
     class Meta:
         db_table = "videovue"
-        unique_together = ('video', 'user')  # Une seule vue par utilisateur et vidéo
+        unique_together = ('video', 'user')
 
 class VideoLike(models.Model):
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="likes_detaillees")
@@ -94,13 +110,14 @@ class VideoRegarderPlusTard(models.Model):
         db_table = "videoregarderplustard"
         unique_together = ('video', 'user')
 
-class VideoChaine(models.Model):
-    chaine = models.ForeignKey(Chaine, on_delete=models.CASCADE, related_name='videos_chaine')
-    video = models.OneToOneField(Video, on_delete=models.CASCADE, related_name="videos_chaine")
+class VideoPlaylist(models.Model):
+    playlist = models.ForeignKey(Playlist, on_delete=models.CASCADE, related_name='videos_playlist')
+    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="video_playlist")
     ordre = models.IntegerField(default=0)
     
     class Meta:
-        db_table = "videochaine"
+        db_table = "videoplaylist"
+        unique_together = ('playlist', 'video')
 
 class Commentaire(models.Model):
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="commentaires")
