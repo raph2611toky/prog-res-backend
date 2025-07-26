@@ -15,53 +15,42 @@ from asgiref.sync import async_to_sync
 from drf_yasg import openapi
 from datetime import datetime
 
-from helpers.helper import LOGGER, get_token_from_request, get_user
+from helpers.helper import LOGGER, get_token_from_request, get_user, format_file_size, get_available_info
 
 from django.db.models import Count
+from django.conf import settings
 from django.db.models import Max
 from django.utils import timezone as django_timezone
 from django.http import FileResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from datetime import timedelta, timezone
-import uuid, time, os
+import uuid, time, os, shutil
 from queue import Queue
 from threading import Thread
 
 ################################# WORKER #################################
 
+video_processing_queue = Queue()
 
-video_conversion_queue = Queue()
-video_affichage_queue = Queue()
-
-def video_conversion_worker():
+def video_processing_worker():
     while True:
-        video_id = video_conversion_queue.get()
-        print("[!] 🎊 [!] 🎊 Video conversion", video_id)
+        video_processing = video_processing_queue.get()
+        type = video_processing.get('type', 'THUMBNAILS')
+        video_id = video_processing.get('video_id')
+        print("[!] 🎊 Worker traite vidéo ID: %s", video_id)
         try:
-            print("[!] 🎊 Worker traite vidéo ID: %s", video_id)
-            process_video_conversion(video_id)
+            if type == "THUMBNAILS":
+                generate_video_affichage(video_id)
+            elif type == "CONVERSION":
+                process_video_conversion(video_id)
         except Exception as e:
             print("[❌] Erreur dans le worker pour vidéo ID: %s - %s", video_id, str(e))
         finally:
-            video_conversion_queue.task_done()
-            
-def video_affichage_worker():
-    while True:
-        video_id = video_affichage_queue.get()
-        print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
-        try:
-            generate_video_affichage(video_id)
-        except Exception as e:
-            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
-        finally:
-            video_affichage_queue.task_done()
+            video_processing_queue.task_done()
 
-worker_thread = Thread(target=video_conversion_worker, daemon=True)
+worker_thread = Thread(target=video_processing_worker, daemon=True)
 worker_thread.start()
-
-affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
-affichage_worker_thread.start()
 
 ################################# WORKER #################################
 
@@ -224,8 +213,8 @@ class VideoCreateView(APIView):
             if fichier:
                 video.fichier = fichier
             video.save()
-            video_conversion_queue.put(video.id)
-            video_affichage_queue.put(video.id)
+            video_processing_queue.put({"video_id":video.id, "type":"THUMBNAILS"})
+            video_processing_queue.put({"video_id":video.id, "type":"CONVERSION"})
             
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
@@ -367,12 +356,26 @@ class VideoDeleteView(APIView):
     def delete(self, request, video_id):
         try:
             video = Video.objects.get(id=video_id)
+            video_dir = os.path.join(settings.MEDIA_ROOT, "videos", str(video.id))
+            original_file_path = os.path.join(settings.MEDIA_ROOT, "videos", os.path.basename(video.fichier.name))
+
             if hasattr(video, 'videos_chaine'):
                 video.videos_chaine.delete()
+            if os.path.exists(video.fichier.path):
+                os.remove(video.fichier.path)
+            if os.path.exists(video.affichage.path):
+                os.remove(video.affichage.path)
             video.delete()
-            return Response({"message": "Video supprimé"}, status=204)
+            if os.path.exists(video_dir):
+                shutil.rmtree(video_dir)
+            if os.path.exists(original_file_path) and original_file_path != video.fichier.path:
+                os.remove(original_file_path)
+            return Response({"message": "Vidéo supprimée"}, status=204)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
+        except Exception as e:
+            print(f"Erreur lors de la suppression des fichiers : {e}")
+            return Response({"error": "Erreur lors de la suppression des fichiers"}, status=500)
 
 # Vues pour les Chaines
 
@@ -824,11 +827,11 @@ class RegarderPlusTardMarquerView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Marqué un video 'à regarder plus tard' par l'utilisateur authentifié",
+        operation_description="Marquer une vidéo 'à regarder plus tard' par l'utilisateur authentifié",
         tags=["Vidéos"],
         responses={
             200: openapi.Response(
-                description="Reussi",
+                description="Réussi",
                 schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
             ),
             401: openapi.Response(
@@ -845,10 +848,9 @@ class RegarderPlusTardMarquerView(APIView):
         try:
             video = Video.objects.get(id=video_id)
             VideoRegarderPlusTard.objects.create(user=request.user, video=video)
-            return Response({"message":"✅Video marqué pour regarder plus tard"}, status=200)
+            return Response({"message":"✅ Vidéo marquée pour regarder plus tard"}, status=200)
         except Exception as e:
             return Response({"erreur": str(e)}, status=500)
-
 
 class SubscribedChainesView(APIView):
     permission_classes = [IsAuthenticated]
@@ -894,7 +896,7 @@ class VideoManifestView(APIView):
     def get(self, request, video_id):
         try:
             video = Video.objects.get(id=video_id)
-            return FileResponse(open(video.master_manifest_file.path, 'rb'), content_type='application/vnd.apple.mpegurl')
+            return FileResponse(open(os.path.join(settings.MEDIA_ROOT, video.master_manifest_file), 'rb'), content_type='application/vnd.apple.mpegurl')
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
 
@@ -916,10 +918,192 @@ class VideoSegmentView(APIView):
     def get(self, request, video_id, segment_name):
         try:
             video = Video.objects.get(id=video_id)
-            segment_path = os.path.join(video.segments_dir, segment_name)
+            segment_path = os.path.join(settings.MEDIA_ROOT, "videos", str(video.id), "segments", segment_name)
             if os.path.exists(segment_path):
                 return FileResponse(open(segment_path, 'rb'), content_type='video/mp4')
             else:
                 return Response({'error': 'Segment non trouvé'}, status=404)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class VideoLikeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Like ou Unlike une vidéo",
+        responses={
+            200: openapi.Response(
+                description="Action réussie",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            user = request.user
+            if VideoLike.objects.filter(video=video, user=user).exists():
+                VideoLike.objects.filter(video=video, user=user).delete()
+                video.likes.remove(user)
+                return Response({"message": "Like retiré"}, status=200)
+            else:
+                VideoLike.objects.create(video=video, user=user)
+                video.likes.add(user)
+                return Response({"message": "Like ajouté"}, status=200)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class VideoDislikeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Dislike ou Undislike une vidéo",
+        responses={
+            200: openapi.Response(
+                description="Action réussie",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            user = request.user
+            if VideoDislike.objects.filter(video=video, user=user).exists():
+                VideoDislike.objects.filter(video=video, user=user).delete()
+                video.dislikes.remove(user)
+                return Response({"message": "Dislike retiré"}, status=200)
+            else:
+                VideoDislike.objects.create(video=video, user=user)
+                video.dislikes.add(user)
+                return Response({"message": "Dislike ajouté"}, status=200)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class ChaineSubscribeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="S'abonner ou se désabonner d'une chaîne",
+        responses={
+            200: openapi.Response(
+                description="Action réussie",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            404: openapi.Response(
+                description="Chaîne non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request, chaine_id):
+        try:
+            chaine = Chaine.objects.get(id=chaine_id)
+            user = request.user
+            if chaine.abonnees.filter(id=user.id).exists():
+                chaine.abonnees.remove(user)
+                return Response({"message": "Désabonné"}, status=200)
+            else:
+                chaine.abonnees.add(user)
+                return Response({"message": "Abonné"}, status=200)
+        except Chaine.DoesNotExist:
+            return Response({'error': 'Chaîne non trouvée'}, status=404)
+
+class VideoViewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Marquer une vidéo comme vue",
+        responses={
+            200: openapi.Response(
+                description="Vidéo marquée comme vue",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"message": openapi.Schema(type=openapi.TYPE_STRING)})
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def post(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            user = request.user
+            if not VideoVue.objects.filter(video=video, user=user).exists():
+                VideoVue.objects.create(video=video, user=user)
+                video.vues.add(user)
+                return Response({"message": "Vidéo marquée comme vue"}, status=200)
+            else:
+                return Response({"message": "Vidéo déjà vue"}, status=200)
+        except Video.DoesNotExist:
+            return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+class VideoDownloadView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Récupère les informations de téléchargement pour une vidéo spécifique, incluant les qualités disponibles, leurs URLs directes, tailles et durées",
+        tags=["Téléchargements"],
+        responses={
+            200: openapi.Response(
+                description="Liste des qualités disponibles pour le téléchargement",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "qualities": openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(
+                                type=openapi.TYPE_OBJECT,
+                                properties={
+                                    "quality": openapi.Schema(type=openapi.TYPE_STRING, description="Qualité de la vidéo (e.g., 1080p, 720p)"),
+                                    "url": openapi.Schema(type=openapi.TYPE_STRING, description="URL directe pour le téléchargement"),
+                                    "size": openapi.Schema(type=openapi.TYPE_STRING, description="Taille du fichier formatée"),
+                                    "duration": openapi.Schema(type=openapi.TYPE_STRING, description="Durée de la vidéo formatée"),
+                                }
+                            )
+                        )
+                    }
+                )
+            ),
+            404: openapi.Response(
+                description="Vidéo non trouvée",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT, properties={"error": openapi.Schema(type=openapi.TYPE_STRING)})
+            )
+        }
+    )
+    def get(self, request, video_id):
+        try:
+            video = Video.objects.get(id=video_id)
+            video_path = video.fichier.path
+            video_info = get_available_info(video_path)
+            qualities = video_info.get('qualities', [])
+            duration = video_info.get('duration_formatted', 'N/A')
+            base_url = settings.BASE_URL
+            media_url = settings.MEDIA_URL
+            original_filename = os.path.basename(video_path)
+            qualities_list = []
+            for quality in qualities:
+                if quality == video_info.get('quality',None):
+                    quality_file_path = os.path.join("videos", str(video.id), original_filename)
+                else:
+                    quality_file_path = os.path.join("videos", str(video.id), "qualities", quality, original_filename)
+                quality_url = f"{base_url}{media_url}{quality_file_path}"
+                full_path = os.path.join(settings.MEDIA_ROOT, quality_file_path)
+                size = format_file_size(os.path.getsize(full_path)) if os.path.exists(full_path) else "N/A"
+                qualities_list.append({
+                    "quality": quality,
+                    "url": quality_url,
+                    "taille": size,
+                    "duration": duration
+                })
+            return Response({"qualities": qualities_list}, status=200)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)

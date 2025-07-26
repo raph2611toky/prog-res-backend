@@ -4,7 +4,8 @@ from apps.videos.views import (
     ChaineListView, ChaineDetailView, ChaineCreateView, ChaineUpdateView, ChaineDeleteView,
     CommentListView, CommentCreateView, MessageListView, MessageCreateView, VideoSearchView, VideoChunkedUploadView,
     LikedVideosView, SubscribedChainesView, HistoriqueVuesView, DislikedVideosView, RegarderPlusTardListView,
-    RegarderPlusTardMarquerView, VideoManifestView, VideoSegmentView
+    RegarderPlusTardMarquerView, VideoManifestView, VideoSegmentView,VideoLikeView, VideoDislikeView, ChaineSubscribeView,
+    VideoViewView,VideoDownloadView
 )
 
 urlpatterns = [
@@ -38,4 +39,11 @@ urlpatterns = [
     
     path('videos/<int:video_id>/manifest.m3u8', VideoManifestView.as_view(), name='video_manifest'),
     path('videos/<int:video_id>/segments/<str:segment_name>', VideoSegmentView.as_view(), name='video_segment'),
+    
+    path('videos/<int:video_id>/like/', VideoLikeView.as_view(), name='video-like'),
+    path('videos/<int:video_id>/dislike/', VideoDislikeView.as_view(), name='video-dislike'),
+    path('chaines/<int:chaine_id>/subscribe/', ChaineSubscribeView.as_view(), name='chaine-subscribe'),
+    path('videos/<int:video_id>/view/', VideoViewView.as_view(), name='video-view'),
+    
+    path('videos/<int:video_id>/download/', VideoDownloadView.as_view(), name='video-download'),
 ]

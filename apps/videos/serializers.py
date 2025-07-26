@@ -5,12 +5,37 @@ from django.utils.text import slugify
 from apps.streaming.models import VideoWatch
 from apps.streaming.serializers import VideoWatchSerializer
 from django.conf import settings
-from helpers.helper import calcule_de_similarite_de_phrase, get_available_info, format_file_size, format_duration, format_views, format_elapsed_time
+from helpers.helper import (
+    calcule_de_similarite_de_phrase, get_available_info, format_file_size, format_duration, format_views, 
+    format_elapsed_time
+)
+from apps.videos.tasks import generate_video_affichage
 from django.db.models import Count
 from django.db.models import Max
 from django.contrib.auth.models import AnonymousUser
-
+from queue import Queue
+from threading import Thread
 import os
+
+################################# WORKER #################################
+
+video_affichage_queue = Queue()
+
+def video_affichage_worker():
+    while True:
+        video_id = video_affichage_queue.get()
+        print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
+        try:
+            generate_video_affichage(video_id)
+        except Exception as e:
+            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
+        finally:
+            video_affichage_queue.task_done()
+            
+affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+affichage_worker_thread.start()
+
+################################# WORKER #################################
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
@@ -103,6 +128,8 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
         return f"{settings.BASE_URL}{obj.fichier.url}" if obj.fichier else None
 
     def get_affichage_url(self, obj):
+        if obj.affichage is None:
+            video_affichage_queue.put(obj.id)
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
@@ -113,6 +140,34 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
 
     def get_vues_count(self, obj):
         return obj.vues.count()
+    
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get("request", None)
+        if request is not None and not isinstance(request.user, AnonymousUser):
+            user = request.user
+            representation['is_liked_by_me'] = user.id in [u.id for u in instance.likes.all()]
+            representation['is_disliked_by_me'] = user.id in [u.id for u in instance.dislikes.all()]
+            representation['is_view_by_me'] = user.id in [u.id for u in instance.vues.all()]
+            try:
+                watch = VideoWatch.objects.get(video=instance, user=user)
+                representation["my_watch_video"] = VideoWatchSerializer(watch).data
+            except VideoWatch.DoesNotExist:
+                pass
+        if instance.fichier:
+            video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
+            video_info = get_available_info(video_path)
+            if video_info and 'error' not in video_info:
+                representation["taille"] = format_file_size(video_info.get('size', 0))
+                representation["duration"] = format_duration(video_info.get('duration', 0))
+                representation["largeur"] = f"{video_info.get('width', 0)}"
+                representation["hauteur"] = f"{video_info.get('height', 0)}"
+                representation["qualite"] = video_info.get('quality', 'N/A')
+                representation["qualites_disponibles"] = video_info.get('qualities', 'N/A')
+                representation["fps"] = f"{video_info.get('fps', 0)} images/s"
+        representation['vues_formatted'] = format_views(representation['vues_count'])
+        representation['elapsed_time'] = format_elapsed_time(instance.uploaded_at)
+        return representation
 
 class VideoSerializer(serializers.ModelSerializer):
     envoyeur = UserSerializer(read_only=True)
@@ -142,6 +197,8 @@ class VideoSerializer(serializers.ModelSerializer):
         return f"{settings.BASE_URL}{obj.fichier.url}" if obj.fichier else None
     
     def get_affichage_url(self, obj):
+        if not obj.affichage:
+            video_affichage_queue.put(obj.id)
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
