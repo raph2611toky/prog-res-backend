@@ -7,6 +7,7 @@ class VideoWatch(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="watches")
     last_position = models.FloatField(default=0.0)
     quality = models.CharField(max_length=10, default="auto") 
+    volume = models.FloatField(default=1.0)
     playback_speed = models.FloatField(default=1.0)
     last_watch = models.DateTimeField(default=default_created_at) 
 

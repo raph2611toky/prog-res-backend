@@ -553,7 +553,7 @@ class VideoDeleteView(APIView):
             original_file_path = os.path.join(settings.MEDIA_ROOT, "videos", os.path.basename(video.fichier.name))
 
             if hasattr(video, 'video_playlist'):
-                video.video_playlist.delete()
+                video.video_playlist.all().delete()
             if os.path.exists(video.fichier.path):
                 os.remove(video.fichier.path)
             if os.path.exists(video.affichage.path):

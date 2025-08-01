@@ -15,7 +15,7 @@ urlpatterns = [
 
     path('videos/', views.VideoListView.as_view(), name='video-list'),
     path('videos/<int:video_id>/', views.VideoDetailView.as_view(), name='video-detail'),
-    path('videos/code/<str:code_id>/', views.VideoDetailByCodeIdView.as_view(), name='video-detail-by-code'),
+    path('videos/<str:code_id>/details/', views.VideoDetailByCodeIdView.as_view(), name='video-detail-by-code'),
     path('videos/create/', views.VideoCreateView.as_view(), name='video-create'),
     path('videos/chunked-upload/', views.VideoChunkedUploadView.as_view(), name='video-chunked-upload'),
     path('videos/<int:video_id>/update/', views.VideoUpdateView.as_view(), name='video-update'),
