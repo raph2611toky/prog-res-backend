@@ -22,3 +22,4 @@ helpers/services/google/client_secret.json
 .env
 
 media/
+venv
