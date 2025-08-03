@@ -122,7 +122,7 @@ class VideoWatchConsumer(AsyncWebsocketConsumer):
 
                     base_url = settings.BASE_URL + settings.MEDIA_URL
                     segment_urls = [
-                        f"{base_url}videos/{self.video_id}/segments/{quality if quality != video_info['quality'] else "original"}/{segment_files[i]}"
+                        f"{base_url}videos/{self.video_id}/segments/{quality if quality != video_info['quality'] else 'original'}/{segment_files[i]}"
                         for i in range(segment_index, len(segment_files))
                     ]
 
