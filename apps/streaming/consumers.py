@@ -2,25 +2,91 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 import json
-import os
 from django.conf import settings
 from apps.streaming.models import VideoWatch
-from apps.videos.models import Video
+from apps.videos.models import Video, VideoInfo
 from helpers.helper import get_available_info
-import math
-import traceback 
+import os
 
 @database_sync_to_async
 def get_video_info_available(video_id):
     try:
         video = Video.objects.get(id=video_id)
+        video_info = VideoInfo.objects.get(video=video)
         video_path = video.fichier.path
-        video_info = get_available_info(video_path)
-        return video_info
+        probe_info = get_available_info(video_path)
+        
+        qualities = []
+        base_url = settings.BASE_URL + settings.MEDIA_URL
+        video_dir = os.path.join("videos", str(video.id))
+        for quality in video_info.qualities:
+            manifest_path = os.path.join(video_dir, "segments", quality if quality != video_info.qualities[0] else "original", "video.m3u8")
+            qualities.append({
+                "name": quality,
+                "url": f"{base_url}{manifest_path}",
+                "resolution": {
+                    "2160p": "3840x2160",
+                    "1440p": "2560x1440",
+                    "1080p": "1920x1080",
+                    "720p": "1280x720",
+                    "480p": "842x480",
+                    "360p": "640x360",
+                    "240p": "426x240",
+                    "144p": "256x144"
+                }.get(quality, "1920x1080"),
+                "bandwidth": {
+                    "2160p": "16000000",
+                    "1440p": "8000000",
+                    "1080p": "5000000",
+                    "720p": "2800000",
+                    "480p": "1400000",
+                    "360p": "800000",
+                    "240p": "400000",
+                    "144p": "200000"
+                }.get(quality, "5000000")
+            })
+
+        audio_tracks = []
+        for lang in video_info.audio_languages:
+            audio_manifest = os.path.join(video_dir, "segments", "original", f"audio_{lang}.m3u8")
+            audio_tracks.append({
+                "language": lang,
+                "url": f"{base_url}{audio_manifest}"
+            })
+
+        subtitle_tracks = []
+        for lang in video_info.subtitle_languages:
+            subtitle_manifest = os.path.join(video_dir, "segments", "original", f"subs_{lang}.m3u8")
+            subtitle_tracks.append({
+                "language": lang,
+                "url": f"{base_url}{subtitle_manifest}"
+            })
+
+        return {
+            "qualities": qualities,
+            "audio_tracks": audio_tracks,
+            "subtitle_tracks": subtitle_tracks,
+            "fps": video_info.fps,
+            "width": video_info.width,
+            "height": video_info.height,
+            "duration": video_info.duration,
+            "size": video_info.size,
+            "master_manifest": os.path.join(base_url, video.master_manifest_file.name),
+            "quality": probe_info["quality"]
+        }
     except Video.DoesNotExist:
+        return None
+    except VideoInfo.DoesNotExist:
         return None
     except Exception as e:
         print(f"Error in get_video_info_available: {str(e)}")
+        return None
+
+@database_sync_to_async
+def get_video_watch(video_id, user):
+    try:
+        return VideoWatch.objects.get(video_id=video_id, user=user)
+    except VideoWatch.DoesNotExist:
         return None
 
 class VideoWatchConsumer(AsyncWebsocketConsumer):
@@ -33,6 +99,7 @@ class VideoWatchConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_add(self.group_name, self.channel_name)
             await self.accept()
             print("✅ Connected...")
+            await self.send_manifest_url()
         else:
             self.user = None
             await self.close()
@@ -50,7 +117,6 @@ class VideoWatchConsumer(AsyncWebsocketConsumer):
             print(f"📥 Received: {data_info}")
 
             if type_data == 'update':
-                # Update viewing information
                 video_watch, _ = await database_sync_to_async(VideoWatch.objects.get_or_create)(
                     video_id=self.video_id,
                     user=self.user,
@@ -62,87 +128,6 @@ class VideoWatchConsumer(AsyncWebsocketConsumer):
                 video_watch.volume = data.get('volume', video_watch.volume)
                 await database_sync_to_async(video_watch.save)()
 
-                await self.channel_layer.group_send(
-                    self.group_name,
-                    {
-                        'type': 'watch_update',
-                        'position': video_watch.last_position,
-                        'quality': video_watch.quality,
-                        'speed': video_watch.playback_speed,
-                        'volume': video_watch.volume,
-                        'video_id': self.video_id
-                    }
-                )
-
-            elif type_data == 'get_segments':
-                video_info = await get_video_info_available(self.video_id)
-                if not video_info:
-                    await self.send(text_data=json.dumps({
-                        'type': 'error',
-                        'message': 'Vidéo non trouvée ou informations indisponibles'
-                    }))
-                    return
-
-                position = data.get('position', 0.0)
-                quality = data.get('quality', 'auto')
-                segment_index = math.floor(position / 10)
-                print(f"[!] Get segments for position {position}, quality {quality}...")
-
-                if quality not in video_info['qualities']:
-                    quality = video_info["quality"]
-
-                try:
-                    video = await database_sync_to_async(Video.objects.get)(id=self.video_id)
-                    segments_dir = os.path.join(settings.MEDIA_ROOT, "videos", str(self.video_id), "segments", quality if quality != video_info['quality'] else "original")
-                    manifest_path = os.path.join(segments_dir, "manifest.m3u8")
-                    print(f"Checking manifest at: {manifest_path}")
-
-                    # Wrap file system access in a sync_to_async call
-                    @database_sync_to_async
-                    def check_manifest_and_read():
-                        if not os.path.exists(manifest_path):
-                            return None
-                        with open(manifest_path, 'r') as f:
-                            return f.readlines()
-
-                    manifest_lines = await check_manifest_and_read()
-                    if not manifest_lines:
-                        await self.send(text_data=json.dumps({
-                            'type': 'error',
-                            'message': 'Manifeste HLS non trouvé'
-                        }))
-                        return
-
-                    segment_files = [line.strip() for line in manifest_lines if line.strip().endswith('.ts')]
-                    if segment_index >= len(segment_files):
-                        await self.send(text_data=json.dumps({
-                            'type': 'error',
-                            'message': 'Position demandée hors de la portée de la vidéo'
-                        }))
-                        return
-
-                    base_url = settings.BASE_URL + settings.MEDIA_URL
-                    segment_urls = [
-                        f"{base_url}videos/{self.video_id}/segments/{quality if quality != video_info['quality'] else 'original'}/{segment_files[i]}"
-                        for i in range(segment_index, len(segment_files))
-                    ]
-
-                    segment_start_time = segment_index * 10.0
-                    offset_in_segment = position - segment_start_time
-
-                    await self.send(text_data=json.dumps({
-                        'type': 'segment_info',
-                        'segments': segment_urls,
-                        'start_offset': offset_in_segment,
-                        'quality': quality,
-                        'video_id': self.video_id
-                    }))
-                except Video.DoesNotExist:
-                    await self.send(text_data=json.dumps({
-                        'type': 'error',
-                        'message': 'Vidéo non trouvée'
-                    }))
-
         except json.JSONDecodeError:
             await self.send(text_data=json.dumps({
                 'type': 'error',
@@ -150,10 +135,50 @@ class VideoWatchConsumer(AsyncWebsocketConsumer):
             }))
         except Exception as e:
             print(f"Error in receive: {str(e)}")
-            print(traceback.format_exc())
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': f'Erreur serveur: {str(e)}'
+                'message': f'Server error: {str(e)}'
+            }))
+
+    async def send_manifest_url(self):
+        try:
+            video = await database_sync_to_async(Video.objects.get)(id=self.video_id)
+            video_info = await get_video_info_available(self.video_id)
+            if not video_info:
+                await self.send(text_data=json.dumps({
+                    'type': 'error',
+                    'message': 'Video or information not found'
+                }))
+                return
+
+            video_watch = await get_video_watch(self.video_id, self.user)
+            last_position = video_watch.last_position if video_watch else 0.0
+            last_volume = video_watch.volume if video_watch else 1
+            last_playback_speed = video_watch.playback_speed if video_watch else 1
+            last_quality = video_watch.quality if video_watch else video_info["quality"]
+
+            await self.send(text_data=json.dumps({
+                'type': 'segment_info',
+                'manifest_url': video_info['master_manifest'],
+                'last_position': last_position,
+                'last_volume': last_volume,
+                'last_playback_speed': last_playback_speed,
+                'last_quality': last_quality,
+                'qualities': video_info['qualities'],
+                'audio_tracks': video_info['audio_tracks'],
+                'subtitle_tracks': video_info['subtitle_tracks'],
+                'metadata': {
+                    'fps': video_info['fps'],
+                    'width': video_info['width'],
+                    'height': video_info['height'],
+                    'duration': video_info['duration'],
+                    'size': video_info['size']
+                }
+            }))
+        except Video.DoesNotExist:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': 'Video not found'
             }))
 
     async def watch_update(self, event):

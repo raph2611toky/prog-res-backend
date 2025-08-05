@@ -30,31 +30,25 @@ import traceback
 
 ################################# WORKER #################################
 
+video_processing_queue = Queue()
+
 def video_processing_worker():
     while True:
+        print(video_processing_queue)
+        video_info = video_processing_queue.get()
+        process_type = video_info.get('type')
+        video_id = video_info.get('video_id')
+        print("[!] 🖼️ Worker processing vidéo...", video_id)
         try:
-            task = VideoProcessingTask.objects.filter(status='PENDING').order_by('created_at').first()
-            if task:
-                print(f"[!] 🎊 Worker traite la tâche ID: {task.id} pour vidéo ID: {task.video_id}")
-                task.status = 'PROCESSING'
-                task.save()
-                
-                try:
-                    if task.task_type == 'THUMBNAILS':
-                        generate_video_affichage(task.video_id)
-                    elif task.task_type == 'CONVERSION':
-                        process_video_conversion(task.video_id)
-                    task.status = 'COMPLETED'
-                    task.save()
-                except Exception as e:
-                    print(f"[❌] Erreur dans le worker pour tâche ID: {task.id} - {str(e)}")
-                    task.status = 'FAILED'
-                    task.error_message = str(e)
-                    task.save()
+            if process_type == "THUMBNAILS":
+                generate_video_affichage(video_id)
+            elif process_type == "CONVERSION":
+                process_video_conversion(video_id)
         except Exception as e:
-            print(f"[❌] Erreur dans le worker: {str(e)}")
-        time.sleep(1)  # Attendre avant de vérifier la prochaine tâche
-
+            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
+        finally:
+            video_processing_queue.task_done()
+            
 processing_worker_thread = Thread(target=video_processing_worker, daemon=True)
 processing_worker_thread.start()
 
@@ -485,17 +479,18 @@ class VideoCreateView(APIView):
             if fichier:
                 video.fichier = fichier
             video.save()
-            VideoProcessingTask.objects.create(
-                video_id=video.id,
-                task_type='CONVERSION',
-                status='PENDING'
+            video_processing_queue.put(
+                {
+                    "type":"THUMBNAILS",
+                    "video_id":video.id
+                }
+            )            
+            video_processing_queue.put(
+                {
+                    "type":"CONVERSION",
+                    "video_id":video.id
+                }
             )
-            VideoProcessingTask.objects.create(
-                video_id=video.id,
-                task_type='THUMBNAILS',
-                status='PENDING'
-            )
-            
             
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
@@ -623,15 +618,17 @@ class ManualVideoChunkUploadView(APIView):
                                     'status': 'completed'
                                 }
                             )
-                            VideoProcessingTask.objects.create(
-                                video_id=video.id,
-                                task_type='CONVERSION',
-                                status='PENDING'
-                            )
-                            VideoProcessingTask.objects.create(
-                                video_id=video.id,
-                                task_type='THUMBNAILS',
-                                status='PENDING'
+                            video_processing_queue.put(
+                                {
+                                    "type":"THUMBNAILS",
+                                    "video_id":video.id
+                                }
+                            )        
+                            video_processing_queue.put(
+                                {
+                                    "type":"CONVERSION",
+                                    "video_id":video.id
+                                }
                             )
                             
                             # Diffusion via WebSocket pour la création de la vidéo
@@ -1155,7 +1152,7 @@ class VideoSearchView(APIView):
 
         search_term = request.query_params.get('search_term')
         if search_term:
-            videos = videos.filter(titre__icontains=search_term) | videos.filter(description__icontains=search_term)
+            videos = videos.filter(titre__icontains=search_term) #| videos.filter(description__icontains=search_term)
 
         tags = request.query_params.get('tags')
         if tags:

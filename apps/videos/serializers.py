@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Tag, Video, Chaine, Commentaire, Message, Playlist, VideoPlaylist, VideoProcessingTask
+from .models import Tag, Video, Chaine, Commentaire, Message, Playlist, VideoPlaylist, VideoProcessingTask, VideoInfo
 from apps.users.serializers import UserSerializer
 from django.utils.text import slugify
 from apps.streaming.models import VideoWatch
@@ -18,28 +18,21 @@ import os
 import time
 
 ################################# WORKER #################################
+video_affichage_queue = Queue()
+
 def video_affichage_worker():
     while True:
+        video_id = video_affichage_queue.get()
+        print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
         try:
-            task = VideoProcessingTask.objects.filter(status='PENDING').order_by('created_at').first()
-            if task:
-                print(f"[!] 🎊 Worker traite la tâche ID: {task.id} pour vidéo ID: {task.video_id}")
-                task.status = 'PROCESSING'
-                task.save()
-                
-                try:
-                    if task.task_type == 'THUMBNAILS':
-                        generate_video_affichage(task.video_id)
-                    task.status = 'COMPLETED'
-                    task.save()
-                except Exception as e:
-                    print(f"[❌] Erreur dans le worker pour tâche ID: {task.id} - {str(e)}")
-                    task.status = 'FAILED'
-                    task.error_message = str(e)
-                    task.save()
+            generate_video_affichage(video_id)
         except Exception as e:
-            print(f"[❌] Erreur dans le worker: {str(e)}")
-        time.sleep(1) 
+            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
+        finally:
+            video_affichage_queue.task_done()
+            
+affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+affichage_worker_thread.start()
 
 processing_worker_thread = Thread(target=video_affichage_worker, daemon=True)
 processing_worker_thread.start()
@@ -192,11 +185,7 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
 
     def get_affichage_url(self, obj):
         if obj.affichage is None:
-            VideoProcessingTask.objects.create(
-                video_id=obj.id,
-                task_type='THUMBNAILS',
-                status='PENDING'
-            )
+            video_affichage_queue.put(obj.id)
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
@@ -209,6 +198,25 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
         return obj.vues.count()
     
     def to_representation(self, instance):
+        if not hasattr(instance, 'info'):
+            video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
+            try:
+                video_info = get_available_info(video_path)
+                if video_info and 'error' not in video_info:
+                    VideoInfo.objects.create(
+                        video=instance,
+                        qualities=video_info['qualities'],
+                        audio_languages=video_info.get('audio_tracks', []),
+                        subtitle_languages=video_info.get('subtitle_languages', []),
+                        fps=video_info['fps'],
+                        width=video_info['width'],
+                        height=video_info['height'],
+                        duration=video_info['duration'],
+                        size=video_info['size']
+                    )
+                    instance.refresh_from_db()
+            except Exception as e:
+                print(f"Erreur lors de la génération des informations vidéo : {e}")
         representation = super().to_representation(instance)
         request = self.context.get("request", None)
         if request is not None and not isinstance(request.user, AnonymousUser):
@@ -221,17 +229,17 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
                 representation["my_watch_video"] = VideoWatchSerializer(watch).data
             except VideoWatch.DoesNotExist:
                 pass
-        if instance.fichier:
-            video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
-            video_info = get_available_info(video_path)
-            if video_info and 'error' not in video_info:
-                representation["taille"] = format_file_size(video_info.get('size', 0))
-                representation["duration"] = format_duration(video_info.get('duration', 0))
-                representation["largeur"] = f"{video_info.get('width', 0)}"
-                representation["hauteur"] = f"{video_info.get('height', 0)}"
-                representation["qualite"] = video_info.get('quality', 'N/A')
-                representation["qualites_disponibles"] = video_info.get('qualities', 'N/A')
-                representation["fps"] = f"{video_info.get('fps', 0)} images/s"
+        if instance.info:
+            info = instance.info
+            representation["taille"] = format_file_size(info.size)
+            representation["duration"] = format_duration(info.duration)
+            representation["largeur"] = str(info.width)
+            representation["hauteur"] = str(info.height)
+            representation["qualite"] = info.qualities[0] if info.qualities else 'N/A'
+            representation["qualites_disponibles"] = info.qualities
+            representation["fps"] = f"{info.fps} images/s"
+            representation["audio_languages"] = info.audio_languages
+            representation["subtitle_languages"] = info.subtitle_languages
         representation['vues_formatted'] = format_views(representation['vues_count'])
         representation['elapsed_time'] = format_elapsed_time(instance.uploaded_at)
         return representation
@@ -263,11 +271,7 @@ class VideoSerializer(serializers.ModelSerializer):
     
     def get_affichage_url(self, obj):
         if not obj.affichage:
-            VideoProcessingTask.objects.create(
-            video_id=obj.id,
-            task_type='THUMBNAILS',
-            status='PENDING'
-        )
+            video_affichage_queue.put(obj.id)
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
@@ -330,6 +334,26 @@ class VideoSerializer(serializers.ModelSerializer):
         return instance
     
     def to_representation(self, instance):
+        if not hasattr(instance, 'info'):
+            # Générer et enregistrer les informations vidéo si elles n'existent pas
+            video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
+            try:
+                video_info = get_available_info(video_path)
+                if video_info and 'error' not in video_info:
+                    VideoInfo.objects.create(
+                        video=instance,
+                        qualities=video_info['qualities'],
+                        audio_languages=video_info.get('audio_tracks', []),
+                        subtitle_languages=video_info.get('subtitle_languages', []),
+                        fps=video_info['fps'],
+                        width=video_info['width'],
+                        height=video_info['height'],
+                        duration=video_info['duration'],
+                        size=video_info['size']
+                    )
+                    instance.refresh_from_db()
+            except Exception as e:
+                print(f"Erreur lors de la génération des informations vidéo : {e}")
         representation = super().to_representation(instance)
         request = self.context.get("request", None)
         with_suggestion = self.context.get("with_suggestion", True)
@@ -351,17 +375,17 @@ class VideoSerializer(serializers.ModelSerializer):
             else:
                 commentaires = commentaires.order_by('-created_at')
             representation["commentaires"] = CommentaireSerializer(commentaires, many=True).data
-        if instance.fichier:
-            video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
-            video_info = get_available_info(instance.fichier.path)
-            if video_info and 'error' not in video_info:
-                representation["taille"] = format_file_size(video_info.get('size', 0))
-                representation["duration"] = format_duration(video_info.get('duration', 0))
-                representation["largeur"] = f"{video_info.get('width', 0)}"
-                representation["hauteur"] = f"{video_info.get('height', 0)}"
-                representation["qualite"] = video_info.get('quality', 'N/A')
-                representation["qualites_disponibles"] = video_info.get('qualities', 'N/A')
-                representation["fps"] = f"{video_info.get('fps', 0)} images/s"
+        if instance.info:
+            info = instance.info
+            representation["taille"] = format_file_size(info.size)
+            representation["duration"] = format_duration(info.duration)
+            representation["largeur"] = str(info.width)
+            representation["hauteur"] = str(info.height)
+            representation["qualite"] = info.qualities[0] if info.qualities else 'N/A'
+            representation["qualites_disponibles"] = info.qualities
+            representation["fps"] = f"{info.fps} images/s"
+            representation["audio_languages"] = info.audio_languages
+            representation["subtitle_languages"] = info.subtitle_languages
         if not with_suggestion:
             representation.pop("suggested_videos", None)
         

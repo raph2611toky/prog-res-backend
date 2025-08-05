@@ -106,6 +106,20 @@ class Video(models.Model):
     class Meta:
         db_table = "video"
         app_label = 'videos'
+        
+class VideoInfo(models.Model):
+    video = models.OneToOneField(Video, on_delete=models.CASCADE, related_name="info")
+    qualities = models.JSONField()
+    audio_languages = models.JSONField()
+    subtitle_languages = models.JSONField() 
+    fps = models.FloatField()
+    width = models.IntegerField()
+    height = models.IntegerField()
+    duration = models.FloatField()
+    size = models.IntegerField()
+
+    class Meta:
+        db_table = "videoinfo"
 
 class VideoVue(models.Model):
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="vues_detaillees")

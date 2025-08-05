@@ -45,8 +45,10 @@ class UploadProgressConsumer(AsyncWebsocketConsumer):
 class VideoConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
+        print("ℹ️ Connecté video consumers ....")
 
     async def disconnect(self, close_code):
+        print("[❗] Deconnecté video consumers ....")
         pass
 
     async def receive(self, text_data):
