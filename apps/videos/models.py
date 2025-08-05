@@ -43,6 +43,38 @@ class Playlist(models.Model):
     
     class Meta:
         db_table = "playlist"
+        
+class VideoUpload(models.Model):
+    upload_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="video_uploads")
+    titre = models.CharField(max_length=200, blank=True)
+    description = models.TextField(blank=True)
+    categorie = models.CharField(max_length=200, blank=True, null=True)
+    visibilite = models.CharField(max_length=200, choices=[(x, x) for x in ['PUBLIC', 'PRIVATE']], default='PUBLIC')
+    tags = models.CharField(max_length=500, blank=True)
+    total_size = models.PositiveBigIntegerField()
+    total_chunks = models.PositiveIntegerField()
+    created_at = models.DateTimeField(default=default_created_at)
+
+    class Meta:
+        db_table = "video_upload"
+        app_label = 'videos'
+
+    def __str__(self):
+        return f"Upload {self.upload_id} by {self.user}"
+
+class VideoChunk(models.Model):
+    video_upload = models.ForeignKey(VideoUpload, on_delete=models.CASCADE, related_name="chunks")
+    chunk_number = models.PositiveIntegerField()
+    chunk_file = models.FileField(upload_to="video_chunks/")
+
+    class Meta:
+        db_table = "video_chunk"
+        app_label = 'videos'
+        unique_together = ('video_upload', 'chunk_number')
+
+    def __str__(self):
+        return f"Chunk {self.chunk_number} for upload {self.video_upload.upload_id}"
 
 class Video(models.Model):
     code_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
@@ -54,9 +86,9 @@ class Video(models.Model):
     
     categorie = models.CharField(max_length=200, blank=True, null=True)
     tags = models.ManyToManyField(Tag, related_name="videos")
-    visibilite = models.CharField(max_length=200, choices=[(x,x) for x in ['PUBLIC', 'PRIVATE']], default='PUBLIC')
+    visibilite = models.CharField(max_length=200, choices=[(x,x) for x in ['PUBLIC', 'PRIVATE', 'UNLISTED']], default='PUBLIC')
     autoriser_commentaire = models.BooleanField(default=True)
-    ordre_de_commentaire = models.CharField(max_length=200, choices=[(x,x) for x in ['TOP', 'NOUVEAUTE']])
+    ordre_de_commentaire = models.CharField(max_length=200, choices=[(x,x) for x in ['TOP', 'NOUVEAUTE']], default="NOUVEAUTE")
     
     likes = models.ManyToManyField(User, related_name="videos_liked")
     dislikes = models.ManyToManyField(User, related_name="videos_disliked")
@@ -73,6 +105,7 @@ class Video(models.Model):
     
     class Meta:
         db_table = "video"
+        app_label = 'videos'
 
 class VideoVue(models.Model):
     video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name="vues_detaillees")
@@ -142,3 +175,25 @@ class Message(models.Model):
     
     class Meta:
         db_table = "message"
+
+class VideoProcessingTask(models.Model):
+    TASK_TYPES = (
+        ('THUMBNAILS', 'Generate Thumbnails'),
+        ('CONVERSION', 'Convert Video'),
+    )
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('PROCESSING', 'Processing'),
+        ('COMPLETED', 'Completed'),
+        ('FAILED', 'Failed'),
+    )
+
+    video_id = models.IntegerField()
+    task_type = models.CharField(max_length=20, choices=TASK_TYPES)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    error_message = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'video_processing_tasks'

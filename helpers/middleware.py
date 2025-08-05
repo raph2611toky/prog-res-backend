@@ -25,6 +25,7 @@ class TokenAuthMiddleware(BaseMiddleware):
             token = auth_header.split(' ')[1]
         elif 'token' in query_params:
             token = query_params['token']
+        print(token)
         if token:
             user = await get_user_from_token(token)
             if user:

@@ -14,10 +14,12 @@ urlpatterns = [
     path('playlists/<int:playlist_id>/delete/', views.PlaylistDeleteView.as_view(), name='playlist-delete'),
 
     path('videos/', views.VideoListView.as_view(), name='video-list'),
+    path('videos/mes/', views.MyVideoListView.as_view(), name='my-video-list'),
     path('videos/<int:video_id>/', views.VideoDetailView.as_view(), name='video-detail'),
     path('videos/<str:code_id>/details/', views.VideoDetailByCodeIdView.as_view(), name='video-detail-by-code'),
     path('videos/create/', views.VideoCreateView.as_view(), name='video-create'),
-    path('videos/chunked-upload/', views.VideoChunkedUploadView.as_view(), name='video-chunked-upload'),
+    path('videos/chunked-upload/', views.ManualVideoChunkUploadView.as_view(), name='video-chunked-upload'),
+    # path('videos/chunked-upload/', views.VideoChunkedUploadView.as_view(), name='video-chunked-upload'),
     path('videos/<int:video_id>/update/', views.VideoUpdateView.as_view(), name='video-update'),
     path('videos/<int:video_id>/delete/', views.VideoDeleteView.as_view(), name='video-delete'),
     path('videos/<int:video_id>/like/', views.VideoLikeView.as_view(), name='video-like'),

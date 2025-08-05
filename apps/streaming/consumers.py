@@ -8,6 +8,7 @@ from apps.streaming.models import VideoWatch
 from apps.videos.models import Video
 from helpers.helper import get_available_info
 import math
+import traceback 
 
 @database_sync_to_async
 def get_video_info_available(video_id):
@@ -149,6 +150,7 @@ class VideoWatchConsumer(AsyncWebsocketConsumer):
             }))
         except Exception as e:
             print(f"Error in receive: {str(e)}")
+            print(traceback.format_exc())
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': f'Erreur serveur: {str(e)}'

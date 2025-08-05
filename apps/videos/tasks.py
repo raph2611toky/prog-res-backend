@@ -66,6 +66,7 @@ def process_video_conversion(video_id):
         if manifest:
             variant_manifests.append(("original", manifest, "8000000", "1920x1080"))
         for q in qualities[1:]:
+            print("[ℹ️] conversion qualité: ",q)
             quality_dir = os.path.join(qualities_base_dir, q)
             os.makedirs(quality_dir, exist_ok=True)
             converted_path = convert_video_quality(new_path, q)

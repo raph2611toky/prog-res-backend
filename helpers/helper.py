@@ -11,13 +11,15 @@ from base64 import b64decode,b64encode
 from cryptography.hazmat.backends import default_backend
 from difflib import SequenceMatcher
 from moviepy.editor import VideoFileClip
+from PIL import Image
 
 from apps.users.models import User, default_created_at
 
 import os, jwt, logging
-import random, re, traceback
+import random, re
 from helpers.constantes import *
 import ffmpeg
+import traceback
 
 load_dotenv()
 LOGGER = logging.getLogger(__name__)
@@ -145,6 +147,9 @@ def format_duration(seconds):
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 def get_available_info(file_path):
+    print("[❕] Getting available info....")
+    if not os.path.exists(file_path):
+        raise Exception(f"[❗]le chemin de fichier {file_path} est introuvable, veuillez verifiez...")
     try:
         clip = VideoFileClip(file_path)
         height = clip.h
@@ -205,7 +210,11 @@ def get_available_info(file_path):
     except Exception as e:
         if 'clip' in locals():
             clip.close()
+        print(traceback.format_exc())
         raise Exception(f"Erreur lors de l'obtention des informations vidéo: {str(e)}")
+
+def custom_resize(clip, newsize, resample=Image.Resampling.LANCZOS):
+    return clip.resize(newsize, resample=resample)
 
 def convert_video_quality(file_path, target_quality):
     try:
@@ -264,6 +273,7 @@ def convert_video_quality(file_path, target_quality):
             clip.close()
         if 'resized_clip' in locals():
             resized_clip.close()
+        print(traceback.format_exc())
         raise Exception(f"Erreur lors de la conversion de la vidéo: {str(e)}")
 
 def format_views(views):

@@ -33,7 +33,7 @@ THIRD_APPS = [
     'drf_yasg',
     'django_extensions',
     'channels',
-    'chunked_upload',
+    # 'chunked_upload',
     'daphne'
 ]
 

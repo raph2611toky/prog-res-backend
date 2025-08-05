@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Tag, Video, Chaine, Commentaire, Message, Playlist, VideoPlaylist
+from .models import Tag, Video, Chaine, Commentaire, Message, Playlist, VideoPlaylist, VideoProcessingTask
 from apps.users.serializers import UserSerializer
 from django.utils.text import slugify
 from apps.streaming.models import VideoWatch
@@ -15,24 +15,34 @@ from django.contrib.auth.models import AnonymousUser
 from queue import Queue
 from threading import Thread
 import os
+import time
 
 ################################# WORKER #################################
-
-video_affichage_queue = Queue()
-
 def video_affichage_worker():
     while True:
-        video_id = video_affichage_queue.get()
-        print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
         try:
-            generate_video_affichage(video_id)
+            task = VideoProcessingTask.objects.filter(status='PENDING').order_by('created_at').first()
+            if task:
+                print(f"[!] 🎊 Worker traite la tâche ID: {task.id} pour vidéo ID: {task.video_id}")
+                task.status = 'PROCESSING'
+                task.save()
+                
+                try:
+                    if task.task_type == 'THUMBNAILS':
+                        generate_video_affichage(task.video_id)
+                    task.status = 'COMPLETED'
+                    task.save()
+                except Exception as e:
+                    print(f"[❌] Erreur dans le worker pour tâche ID: {task.id} - {str(e)}")
+                    task.status = 'FAILED'
+                    task.error_message = str(e)
+                    task.save()
         except Exception as e:
-            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
-        finally:
-            video_affichage_queue.task_done()
-            
-affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
-affichage_worker_thread.start()
+            print(f"[❌] Erreur dans le worker: {str(e)}")
+        time.sleep(1) 
+
+processing_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+processing_worker_thread.start()
 
 ################################# WORKER #################################
 
@@ -182,7 +192,11 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
 
     def get_affichage_url(self, obj):
         if obj.affichage is None:
-            video_affichage_queue.put(obj.id)
+            VideoProcessingTask.objects.create(
+                video_id=obj.id,
+                task_type='THUMBNAILS',
+                status='PENDING'
+            )
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
@@ -249,7 +263,11 @@ class VideoSerializer(serializers.ModelSerializer):
     
     def get_affichage_url(self, obj):
         if not obj.affichage:
-            video_affichage_queue.put(obj.id)
+            VideoProcessingTask.objects.create(
+            video_id=obj.id,
+            task_type='THUMBNAILS',
+            status='PENDING'
+        )
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
@@ -335,7 +353,7 @@ class VideoSerializer(serializers.ModelSerializer):
             representation["commentaires"] = CommentaireSerializer(commentaires, many=True).data
         if instance.fichier:
             video_path = os.path.join(settings.MEDIA_ROOT, instance.fichier.name)
-            video_info = get_available_info(video_path)
+            video_info = get_available_info(instance.fichier.path)
             if video_info and 'error' not in video_info:
                 representation["taille"] = format_file_size(video_info.get('size', 0))
                 representation["duration"] = format_duration(video_info.get('duration', 0))
