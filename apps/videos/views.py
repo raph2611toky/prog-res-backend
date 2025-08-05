@@ -293,6 +293,10 @@ class VideoListView(APIView):
     )
     def get(self, request):
         videos = Video.objects.all()
+        
+        search_term = request.query_params.get('search_term')
+        if search_term:
+            videos = videos.filter(titre__icontains=search_term)
 
         tags = request.query_params.get('tags')
         if tags:
