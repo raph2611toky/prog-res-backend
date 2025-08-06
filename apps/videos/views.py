@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 
 from apps.videos.models import Video, Chaine, VideoPlaylist, Playlist, Commentaire, Message, Tag, VideoVue, VideoLike, VideoDislike, VideoRegarderPlusTard,VideoUpload, VideoChunk, VideoProcessingTask
-from apps.videos.serializers import VideoSerializer, ChaineSerializer, CommentaireSerializer, MessageSerializer, TagSerializer, PlaylistSerializer
-from apps.videos.tasks import process_video_conversion, generate_video_affichage
+from apps.videos.serializers import VideoSerializer, ChaineSerializer, CommentaireSerializer, MessageSerializer, TagSerializer, PlaylistSerializer, video_processing_queue
+# from apps.videos.tasks import process_video_conversion, generate_video_affichage
 from helpers.helper import LOGGER, get_token_from_request, get_user, format_file_size, get_available_info, format_duration
 
 from drf_yasg.utils import swagger_auto_schema
@@ -28,31 +28,31 @@ from threading import Thread
 
 import traceback
 
-################################# WORKER #################################
+# ################################# WORKER #################################
 
-video_processing_queue = Queue()
+# video_processing_queue = Queue()
 
-def video_processing_worker():
-    while True:
-        print(video_processing_queue)
-        video_info = video_processing_queue.get()
-        process_type = video_info.get('type')
-        video_id = video_info.get('video_id')
-        print("[!] 🖼️ Worker processing vidéo...", video_id)
-        try:
-            if process_type == "THUMBNAILS":
-                generate_video_affichage(video_id)
-            elif process_type == "CONVERSION":
-                process_video_conversion(video_id)
-        except Exception as e:
-            print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
-        finally:
-            video_processing_queue.task_done()
+# def video_processing_worker():
+#     while True:
+#         print(video_processing_queue)
+#         video_info = video_processing_queue.get()
+#         process_type = video_info.get('type')
+#         video_id = video_info.get('video_id')
+#         print("[!] 🖼️ Worker processing vidéo...", video_id)
+#         try:
+#             if process_type == "THUMBNAILS":
+#                 generate_video_affichage(video_id)
+#             elif process_type == "CONVERSION":
+#                 process_video_conversion(video_id)
+#         except Exception as e:
+#             print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
+#         finally:
+#             video_processing_queue.task_done()
             
-processing_worker_thread = Thread(target=video_processing_worker, daemon=True)
-processing_worker_thread.start()
+# processing_worker_thread = Thread(target=video_processing_worker, daemon=True)
+# processing_worker_thread.start()
 
-################################# WORKER #################################
+# ################################# WORKER #################################
 
 class TagCreateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -183,7 +183,10 @@ class PlaylistCreateView(APIView):
     def post(self, request):
         try:
             data = request.data.copy()
-            data["user"] = request.user
+            data["user"] = request.user.id
+            # if data.get("chaine",None) is not None and not Chaine.objects.filter(id=data.get("chaine")).exists():
+            #     chaine, _ = Chaine.objects.get_or_create(titre="Chaine de Streaming",description="Chaine de Streaming.")
+            #     data["chaine"] = chaine.id
             serializer = PlaylistSerializer(data=data, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
@@ -479,6 +482,10 @@ class VideoCreateView(APIView):
         serializer = VideoSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             video = serializer.save()
+            if request.data.get("playlist",None) is not None:
+                if Playlist.objects.filter(id=request.data.get("playlist")).exists():
+                    ordre = Playlist.objects.filter(id=request.data.get("playlist")).count()
+                    VideoPlaylist.objects.create(playlist=Playlist.objects.get(id=request.data.get("playlist")),video=video,ordre=ordre+1)
             fichier = request.FILES.get('fichier', None)
             if fichier:
                 video.fichier = fichier
@@ -1699,3 +1706,48 @@ class VideoDownloadView(APIView):
             return Response({"qualities": qualities_list}, status=200)
         except Video.DoesNotExist:
             return Response({'error': 'Vidéo non trouvée'}, status=404)
+
+
+class TrendingVideosView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        operation_description="Récupère les vidéos tendance basées sur le nombre de vues, de likes et de commentaires",
+        responses={
+            200: openapi.Response(
+                description="Listes des vidéos tendance",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "most_viewed": VideoSerializer(many=True),
+                        "most_liked": VideoSerializer(many=True),
+                        "most_commented": VideoSerializer(many=True),
+                    }
+                )
+            )
+        }
+    )
+    def get(self, request):
+        try:
+            # Récupérer les vidéos triées par nombre de vues
+            most_viewed = Video.objects.annotate(view_count=Count('vues')).order_by('-view_count')[:10]
+            
+            # Récupérer les vidéos triées par nombre de likes
+            most_liked = Video.objects.annotate(like_count=Count('likes')).order_by('-like_count')[:10]
+            
+            # Récupérer les vidéos triées par nombre de commentaires
+            most_commented = Video.objects.annotate(comment_count=Count('commentaires')).order_by('-comment_count')[:10]
+            
+            # Sérialiser les données
+            most_viewed_serializer = VideoSerializer(most_viewed, many=True, context={'request': request})
+            most_liked_serializer = VideoSerializer(most_liked, many=True, context={'request': request})
+            most_commented_serializer = VideoSerializer(most_commented, many=True, context={'request': request})
+            
+            # Retourner les données dans un dictionnaire
+            return Response({
+                "most_viewed": most_viewed_serializer.data,
+                "most_liked": most_liked_serializer.data,
+                "most_commented": most_commented_serializer.data,
+            })
+        except Exception as e:
+            return Response({"erreur":str(e)},status=500)

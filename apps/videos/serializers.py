@@ -9,7 +9,7 @@ from helpers.helper import (
     calcule_de_similarite_de_phrase, get_available_info, format_file_size, format_duration, format_views, 
     format_elapsed_time
 )
-from apps.videos.tasks import generate_video_affichage
+from apps.videos.tasks import generate_video_affichage, process_video_conversion
 from django.db.models import Count
 from django.contrib.auth.models import AnonymousUser
 from queue import Queue
@@ -17,27 +17,54 @@ from threading import Thread
 import os
 import time
 
-################################# WORKER #################################
-video_affichage_queue = Queue()
 
-def video_affichage_worker():
+################################# WORKER #################################
+
+video_processing_queue = Queue()
+
+def video_processing_worker():
     while True:
-        video_id = video_affichage_queue.get()
-        print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
+        print(video_processing_queue)
+        video_info = video_processing_queue.get()
+        process_type = video_info.get('type')
+        video_id = video_info.get('video_id')
+        print("[!] 🖼️ Worker processing vidéo...", video_id)
         try:
-            generate_video_affichage(video_id)
+            if process_type == "THUMBNAILS":
+                generate_video_affichage(video_id)
+            elif process_type == "CONVERSION":
+                process_video_conversion(video_id)
         except Exception as e:
             print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
         finally:
-            video_affichage_queue.task_done()
+            video_processing_queue.task_done()
             
-affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
-affichage_worker_thread.start()
-
-processing_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+processing_worker_thread = Thread(target=video_processing_worker, daemon=True)
 processing_worker_thread.start()
 
 ################################# WORKER #################################
+
+# ################################# WORKER #################################
+# video_affichage_queue = Queue()
+
+# def video_affichage_worker():
+#     while True:
+#         video_id = video_affichage_queue.get()
+#         print("[!] 🖼️ Worker génère image pour vidéo ID:", video_id)
+#         try:
+#             generate_video_affichage(video_id)
+#         except Exception as e:
+#             print("[❌] Erreur dans le worker pour image ID:", video_id, str(e))
+#         finally:
+#             video_affichage_queue.task_done()
+            
+# affichage_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+# affichage_worker_thread.start()
+
+# processing_worker_thread = Thread(target=video_affichage_worker, daemon=True)
+# processing_worker_thread.start()
+
+# ################################# WORKER #################################
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
@@ -190,7 +217,12 @@ class SuggestedVideoSerializer(serializers.ModelSerializer):
 
     def get_affichage_url(self, obj):
         if obj.affichage is None:
-            video_affichage_queue.put(obj.id)
+            video_processing_queue.put(
+                {
+                    "type":"THUMBNAILS",
+                    "video_id":obj.id
+                }
+            )
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):
@@ -276,7 +308,12 @@ class VideoSerializer(serializers.ModelSerializer):
     
     def get_affichage_url(self, obj):
         if not obj.affichage:
-            video_affichage_queue.put(obj.id)
+            video_processing_queue.put(
+                {
+                    "type":"THUMBNAILS",
+                    "video_id":obj.id
+                }
+            )  
         return f"{settings.BASE_URL}{obj.affichage.url}" if obj.affichage else None
 
     def get_likes_count(self, obj):

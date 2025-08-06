@@ -146,11 +146,11 @@ def process_video_conversion(video_id):
         subtitle_manifests = []
 
         manifest, segments_dir, bandwidth, resolution, audio_m, subtitle_m = generate_video_segments(video_id, "original")
+        master_manifest_path = os.path.join(video_dir, "master.m3u8")
         if manifest:
             variant_manifests.append(("original", manifest, bandwidth, resolution))
             audio_manifests = audio_m
             subtitle_manifests = subtitle_m
-            master_manifest_path = os.path.join(video_dir, "master.m3u8")
             with open(master_manifest_path, 'w') as f:
                 f.write("#EXTM3U\n#EXT-X-VERSION:3\n")
                 for lang, audio_manifest in audio_manifests:

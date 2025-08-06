@@ -19,6 +19,7 @@ urlpatterns = [
     path('videos/<str:code_id>/details/', views.VideoDetailByCodeIdView.as_view(), name='video-detail-by-code'),
     path('videos/create/', views.VideoCreateView.as_view(), name='video-create'),
     path('videos/chunked-upload/', views.ManualVideoChunkUploadView.as_view(), name='video-chunked-upload'),
+    path('videos/trending/', views.TrendingVideosView.as_view(), name='trending-videos'),
     # path('videos/chunked-upload/', views.VideoChunkedUploadView.as_view(), name='video-chunked-upload'),
     path('videos/<int:video_id>/update/', views.VideoUpdateView.as_view(), name='video-update'),
     path('videos/<int:video_id>/delete/', views.VideoDeleteView.as_view(), name='video-delete'),
