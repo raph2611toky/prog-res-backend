@@ -200,9 +200,16 @@ def get_available_info(file_path):
             ]
         
         audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
-        audio_languages = [stream.get('tags', {}).get('language', 'unknown') for stream in audio_streams]
-        video_info['audio_tracks'] = audio_languages
-        video_info['has_multiple_languages'] = len(set(audio_languages)) > 1
+        audio_tracks = []
+        for stream in audio_streams:
+            language = stream.get('tags', {}).get('language', 'unknown')
+            title = stream.get('tags', {}).get('title', '')
+            if title:
+                audio_tracks.append(f"{language} ({title})")
+            elif language not in audio_tracks:
+                audio_tracks.append(language)
+        video_info['audio_tracks'] = audio_tracks
+        video_info['has_multiple_languages'] = len(set(audio_tracks)) > 1
         
         clip.close()
         return video_info

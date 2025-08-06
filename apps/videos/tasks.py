@@ -132,6 +132,7 @@ def process_video_conversion(video_id):
         original_filename = os.path.basename(video_path)
         new_path = os.path.join(video_dir, original_filename)
         shutil.copy2(video_path, new_path)
+        os.remove(video.fichier.path)
         video.fichier.name = os.path.relpath(new_path, settings.MEDIA_ROOT)
         video.save()
         

@@ -5,6 +5,7 @@ import json
 from django.conf import settings
 from apps.streaming.models import VideoWatch
 from apps.videos.models import Video, VideoInfo
+from apps.videos.serializers import VideoInfoSerializer
 from helpers.helper import get_available_info
 import os
 
@@ -15,6 +16,7 @@ def get_video_info_available(video_id):
         video_info = VideoInfo.objects.get(video=video)
         video_path = video.fichier.path
         probe_info = get_available_info(video_path)
+        # print(VideoInfoSerializer(video_info).data, probe_info)
         
         qualities = []
         base_url = settings.BASE_URL + settings.MEDIA_URL
@@ -26,26 +28,33 @@ def get_video_info_available(video_id):
                 "url": f"{base_url}{manifest_path}",
                 "resolution": {
                     "2160p": "3840x2160",
+                    "2160p (4K)": "3840x2160",
                     "1440p": "2560x1440",
+                    "1440p (2K)": "2560x1440",
                     "1080p": "1920x1080",
+                    "1080p (Full HD)": "1920x1080",
                     "720p": "1280x720",
+                    "720p (HD)": "1280x720",
                     "480p": "842x480",
                     "360p": "640x360",
                     "240p": "426x240",
                     "144p": "256x144"
                 }.get(quality, "1920x1080"),
                 "bandwidth": {
-                    "2160p": "16000000",
-                    "1440p": "8000000",
-                    "1080p": "5000000",
-                    "720p": "2800000",
-                    "480p": "1400000",
-                    "360p": "800000",
-                    "240p": "400000",
-                    "144p": "200000"
+                    "2160p": "3840x2160",
+                    "2160p (4K)": "3840x2160",
+                    "1440p": "2560x1440",
+                    "1440p (2K)": "2560x1440",
+                    "1080p": "1920x1080",
+                    "1080p (Full HD)": "1920x1080",
+                    "720p": "1280x720",
+                    "720p (HD)": "1280x720",
+                    "480p": "842x480",
+                    "360p": "640x360",
+                    "240p": "426x240",
+                    "144p": "256x144"
                 }.get(quality, "5000000")
             })
-
         audio_tracks = []
         for lang in video_info.audio_languages:
             audio_manifest = os.path.join(video_dir, "segments", "original", f"audio_{lang}.m3u8")
@@ -53,7 +62,6 @@ def get_video_info_available(video_id):
                 "language": lang,
                 "url": f"{base_url}{audio_manifest}"
             })
-
         subtitle_tracks = []
         for lang in video_info.subtitle_languages:
             subtitle_manifest = os.path.join(video_dir, "segments", "original", f"subs_{lang}.m3u8")

@@ -99,6 +99,11 @@ class CommentaireSerializer(serializers.ModelSerializer):
             commentaire.membres.set(membre_ids)
         
         return commentaire
+    
+class VideoInfoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VideoInfo
+        fields = '__all__'
 
 class VideoPlaylistSerializer(serializers.ModelSerializer):
     video = serializers.PrimaryKeyRelatedField(queryset=Video.objects.all())
